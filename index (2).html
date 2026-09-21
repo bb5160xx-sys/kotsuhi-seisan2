@@ -1,0 +1,3178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>交通費精算</title>
+<style>
+  /* GitHub Pages等で単体表示するための最低限のリセット
+     （Claude Artifactでは自動的に付与されていたものを明示的に追加） */
+  html, body{ height:100%; margin:0; }
+  img{ max-width:100%; }
+  [hidden]{ display:none !important; }
+
+  /* ===== 配色・文字などの基本設定（トークン） ===== */
+  :root{
+    --bg-outer:#e7ebf1;
+    --bg:#f5f6f8;
+    --surface:#ffffff;
+    --surface-2:#eef1f5;
+    --border:#dfe3e9;
+    --text:#1a2233;
+    --text-muted:#606a7d;
+    --primary:#20456b;
+    --primary-dark:#173250;
+    --primary-soft:#e4ecf4;
+    --primary-contrast:#ffffff;
+    --danger:#b3261e;
+    --danger-soft:#fbe4e2;
+    --pending-fg:#8a5a00;
+    --pending-bg:#fff2d6;
+    --approved-fg:#1e7a43;
+    --approved-bg:#e0f5e6;
+    --rejected-fg:#b3261e;
+    --rejected-bg:#fce3e1;
+    --received-fg:#0f5fa8;
+    --received-bg:#dbe9fb;
+    --radius:14px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg-outer:#0b0e14;
+      --bg:#12161f;
+      --surface:#1b212c;
+      --surface-2:#232a37;
+      --border:#2e3646;
+      --text:#eef1f6;
+      --text-muted:#9aa4b6;
+      --primary:#6fa3d6;
+      --primary-dark:#4a7dab;
+      --primary-soft:#233248;
+      --primary-contrast:#0d1420;
+      --danger:#ff8a80;
+      --danger-soft:#3a2224;
+      --pending-fg:#f3c66b;
+      --pending-bg:#3a2f13;
+      --approved-fg:#7bd39a;
+      --approved-bg:#173625;
+      --rejected-fg:#ff8a80;
+      --rejected-bg:#3a2224;
+      --received-fg:#8ec4f5;
+      --received-bg:#152a40;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg-outer:#0b0e14;
+    --bg:#12161f;
+    --surface:#1b212c;
+    --surface-2:#232a37;
+    --border:#2e3646;
+    --text:#eef1f6;
+    --text-muted:#9aa4b6;
+    --primary:#6fa3d6;
+    --primary-dark:#4a7dab;
+    --primary-soft:#233248;
+    --primary-contrast:#0d1420;
+    --danger:#ff8a80;
+    --danger-soft:#3a2224;
+    --pending-fg:#f3c66b;
+    --pending-bg:#3a2f13;
+    --approved-fg:#7bd39a;
+    --approved-bg:#173625;
+    --rejected-fg:#ff8a80;
+    --rejected-bg:#3a2224;
+    --received-fg:#8ec4f5;
+    --received-bg:#152a40;
+    color-scheme: dark;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg-outer);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    display:flex;
+    justify-content:center;
+    min-height:100%;
+  }
+  #app{
+    width:100%;
+    max-width:480px;
+    min-height:100dvh;
+    background:var(--bg);
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  @media (min-width:560px){
+    body{ padding-block:32px; }
+    #app{
+      min-height:min(860px,calc(100dvh - 64px));
+      border-radius:28px;
+      box-shadow:0 20px 60px rgba(20,30,50,.25);
+      overflow:hidden;
+      border:1px solid var(--border);
+    }
+  }
+
+  .view{ display:flex; flex-direction:column; flex:1; min-height:0; }
+  .view[hidden]{ display:none !important; }
+
+  .topbar{
+    position:sticky;
+    top:env(safe-area-inset-top,0px);
+    z-index:5;
+    background:var(--primary);
+    color:var(--primary-contrast);
+    padding:14px 16px;
+    padding-top:calc(14px);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .topbar h1{ font-size:17px; margin:0; font-weight:700; letter-spacing:.02em; }
+  .btn-icon{
+    appearance:none; border:none; background:transparent; color:inherit;
+    font-size:26px; line-height:1; width:32px; height:32px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:8px; cursor:pointer;
+  }
+  .btn-icon:active{ background:rgba(255,255,255,.15); }
+
+  .content{
+    padding:16px 16px calc(28px + env(safe-area-inset-bottom,0px));
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    overflow-y:auto;
+  }
+
+  .btn-primary{
+    appearance:none; border:none; cursor:pointer;
+    background:var(--primary); color:var(--primary-contrast);
+    font-size:15px; font-weight:700;
+    padding:14px 18px; border-radius:12px;
+    transition:transform .05s ease;
+  }
+  .btn-primary:active{ transform:scale(.98); background:var(--primary-dark); }
+  .btn-block{ width:100%; }
+
+  .btn-secondary{
+    appearance:none; cursor:pointer;
+    background:var(--surface); color:var(--text);
+    border:1px solid var(--border);
+    font-size:14px; font-weight:600;
+    padding:12px 16px; border-radius:12px;
+  }
+  .btn-secondary:active{ background:var(--surface-2); }
+
+  .btn-danger-text{
+    appearance:none; background:none; border:none; cursor:pointer;
+    color:var(--danger); font-size:14px; font-weight:600; padding:8px 0;
+  }
+  .btn-danger{
+    appearance:none; border:none; cursor:pointer;
+    background:var(--danger); color:#fff;
+    font-size:15px; font-weight:700; padding:14px 18px; border-radius:12px;
+  }
+  .btn-danger:active{ opacity:.85; }
+
+  /* ---- ホーム：集計チップ ---- */
+  .stats{ display:flex; gap:8px; }
+  .stat-chip{
+    flex:1; background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:10px 8px; text-align:center;
+  }
+  .stat-chip .num{ font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; display:block; }
+  .stat-chip .label{ font-size:11px; color:var(--text-muted); }
+
+  .section-title{ font-size:14px; font-weight:700; color:var(--text-muted); margin:4px 0 0; }
+
+  .empty-state{
+    background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius);
+    padding:28px 16px; text-align:center; color:var(--text-muted); font-size:13px;
+  }
+
+  .history-list{ display:flex; flex-direction:column; gap:10px; }
+
+  /* ---- 「全員の申請」を見るときの、年・月ごとのグループ表示 ---- */
+  .year-group{ display:flex; flex-direction:column; gap:8px; }
+  .year-group + .year-group{ margin-top:8px; padding-top:12px; border-top:1px solid var(--border); }
+  .year-title{ font-size:15px; font-weight:800; color:var(--text); margin:0; }
+  .month-group{ display:flex; flex-direction:column; gap:8px; }
+  .month-title{ font-size:12px; font-weight:700; color:var(--text-muted); margin:0; padding-left:2px; }
+
+  /* ---- 日ごとの支払い合計（出納帳用・店舗別） ---- */
+  .daily-total-day{ padding:10px 0; border-top:1px solid var(--border); }
+  .daily-total-day:first-of-type{ border-top:none; padding-top:4px; }
+  .daily-total-date{ font-size:13px; font-weight:800; color:var(--text); margin-bottom:6px; }
+  .daily-total-item{ display:flex; flex-direction:column; }
+  .daily-total-row{
+    appearance:none; background:none; border:none; cursor:pointer; width:100%;
+    display:flex; justify-content:space-between; align-items:center;
+    font:inherit; font-size:13px; color:inherit; text-align:left; padding:5px 0;
+  }
+  .daily-total-row:active{ opacity:.7; }
+  .daily-total-row .store-name{ color:var(--text-muted); }
+  .daily-total-row strong{ font-variant-numeric:tabular-nums; font-size:14px; }
+  .daily-total-right{ display:flex; align-items:center; gap:6px; }
+  .daily-total-arrow{ font-size:10px; color:var(--text-muted); transition:transform .15s ease; }
+  .daily-total-row[aria-expanded="true"] .daily-total-arrow{ transform:rotate(90deg); }
+  .daily-total-breakdown{
+    display:flex; flex-direction:column; gap:3px;
+    padding:2px 0 8px 12px; margin-left:2px; border-left:2px solid var(--border);
+  }
+  .breakdown-row{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 10px; font-size:12px; color:var(--text-muted); padding:4px 0; }
+  .breakdown-row .breakdown-amount{ font-variant-numeric:tabular-nums; color:var(--text); }
+  .breakdown-row .breakdown-payer{ width:100%; text-align:right; font-size:11px; }
+  .breakdown-row + .breakdown-row{ border-top:1px solid var(--border); }
+  .claim-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:12px; display:flex; align-items:center; gap:12px;
+    cursor:pointer; text-align:left; width:100%; appearance:none;
+  }
+  .claim-card:active{ background:var(--surface-2); }
+  .cat-badge{
+    flex:none; width:40px; height:40px; border-radius:50%;
+    background:var(--primary-soft); color:var(--primary);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:15px;
+  }
+  .claim-main{ flex:1; min-width:0; }
+  .claim-purpose{ font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .claim-sub{ font-size:12px; color:var(--text-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .claim-amount{ font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .claim-right{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+
+  .status-pill{
+    font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap;
+  }
+  .status-pill[data-status="申請中"]{ background:var(--pending-bg); color:var(--pending-fg); }
+  .status-pill[data-status="承認済み"]{ background:var(--approved-bg); color:var(--approved-fg); }
+  .status-pill[data-status="差戻し"]{ background:var(--rejected-bg); color:var(--rejected-fg); }
+  .status-pill[data-status="受領済み"]{ background:var(--received-bg); color:var(--received-fg); }
+
+  /* ---- フォーム ---- */
+  label, .field-block{ display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; color:var(--text-muted); }
+  input[type="date"], input[type="text"], input[type="number"], textarea{
+    font:inherit; font-size:16px; color:var(--text);
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:11px 12px; width:100%;
+  }
+  input:focus, textarea:focus, button:focus-visible{
+    outline:2px solid var(--primary); outline-offset:1px;
+  }
+  textarea{ resize:vertical; font-family:inherit; }
+
+  /* 数字入力欄の右側にある増減ボタン（スピナー）を非表示にする */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button{
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"]{
+    -moz-appearance: textfield;
+  }
+
+  .chip-group{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{
+    appearance:none; cursor:pointer; font:inherit; font-size:13px; font-weight:600;
+    background:var(--surface); color:var(--text); border:1px solid var(--border);
+    border-radius:999px; padding:9px 14px;
+  }
+  .chip[aria-pressed="true"]{ background:var(--primary); color:var(--primary-contrast); border-color:var(--primary); }
+
+  .amount-field{ display:flex; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:0 12px; }
+  .amount-field span{ color:var(--text-muted); font-weight:700; }
+  .amount-field input{ border:none; padding:11px 6px; background:transparent; }
+  .amount-field input:focus{ outline:none; }
+
+  .file-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .file-label{
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+    padding:11px 14px; font-size:13px; font-weight:600; cursor:pointer; color:var(--text);
+  }
+  #receiptPreview{ max-width:96px; max-height:96px; border-radius:8px; border:1px solid var(--border); object-fit:cover; }
+  .field-error{ color:var(--danger); font-size:12px; font-weight:600; display:none; }
+  .field-error.show{ display:block; }
+
+  /* ---- 詳細画面 ---- */
+  .detail-block{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .daily-totals-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .detail-row{ display:flex; justify-content:space-between; gap:12px; font-size:14px; }
+  .detail-row .k{ color:var(--text-muted); }
+  .detail-row .v{ font-weight:600; text-align:right; }
+  .detail-memo{ font-size:13px; line-height:1.6; white-space:pre-wrap; }
+  .detail-receipt{ width:100%; border-radius:10px; border:1px solid var(--border); }
+  .status-switch{ display:flex; gap:8px; }
+  .status-switch button{ flex:1; padding:10px 8px; font-size:12px; }
+  .status-switch button[aria-pressed="true"]{ box-shadow:inset 0 0 0 2px var(--primary); }
+  .hint{ font-size:11px; color:var(--text-muted); line-height:1.5; }
+
+  /* ---- 区間・距離の入力補助（電車代／ガソリン代） ---- */
+  select{
+    font:inherit; font-size:16px; color:var(--text);
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:11px 12px; width:100%;
+  }
+  .route-block{
+    background:var(--surface-2); border:1px solid var(--border); border-radius:12px;
+    padding:12px; display:flex; flex-direction:column; gap:10px;
+  }
+  .mini-label{ font-size:12px; font-weight:700; color:var(--text-muted); }
+  .link-btn{
+    appearance:none; background:none; border:none; cursor:pointer;
+    color:var(--primary); font-size:13px; font-weight:700; text-decoration:underline;
+    padding:2px 0; text-align:left; align-self:flex-start;
+  }
+  .computed-amount{ font-size:13px; color:var(--text-muted); }
+  .computed-amount strong{ color:var(--text); font-size:16px; font-variant-numeric:tabular-nums; }
+  .mini-form{
+    display:flex; flex-direction:column; gap:8px;
+    background:var(--surface); border:1px dashed var(--border); border-radius:10px; padding:10px;
+  }
+  .mini-form-row{ display:flex; gap:8px; }
+  .mini-form-row > *{ flex:1; min-width:0; }
+
+  /* ---- 普段は隠しておいて、タップすると開く入力欄（訪問先プリセット／
+     電車代・ガソリン代の手入力欄など） ---- */
+  .collapse-toggle{
+    appearance:none; cursor:pointer; width:100%;
+    background:var(--surface); color:var(--text);
+    border:1px solid var(--border); border-radius:10px;
+    font-size:13px; font-weight:700;
+    padding:10px 12px;
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    text-align:left;
+  }
+  .collapse-toggle:active{ background:var(--surface-2); }
+  .collapse-toggle .collapse-arrow{
+    font-size:11px; color:var(--text-muted); transition:transform .15s ease; flex-shrink:0;
+  }
+  .collapse-toggle[aria-expanded="true"] .collapse-arrow{ transform:rotate(90deg); }
+  .collapse-body{ display:flex; flex-direction:column; gap:8px; }
+
+  /* ---- 区間・距離の管理画面 ---- */
+  .preset-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px;
+  }
+  .preset-row .info b{ font-size:13px; }
+  .preset-row .info .sub{ font-size:11px; color:var(--text-muted); margin-top:2px; }
+  .preset-del{
+    appearance:none; border:none; background:none; cursor:pointer;
+    color:var(--danger); font-size:12px; font-weight:700; padding:4px 6px; white-space:nowrap;
+  }
+
+  /* ---- 通知（トースト）・確認ダイアログ ----
+     このページはArtifactのサンドボックス内で動くため、ブラウザ標準の
+     alert()やconfirm()が表示されないことがあります。
+     その代わりにページ内で完結する通知・確認UIを自前で用意しています。 */
+  .toast{
+    position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px));
+    transform:translateX(-50%) translateY(12px);
+    background:var(--text); color:var(--bg);
+    padding:10px 18px; border-radius:999px; font-size:13px; font-weight:600;
+    max-width:88%; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.28);
+    opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+    z-index:80;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .confirm-overlay{
+    position:fixed; inset:0; background:rgba(10,14,20,.5);
+    display:flex; align-items:center; justify-content:center; z-index:90; padding:20px;
+  }
+  .confirm-overlay[hidden]{ display:none; }
+  .confirm-card{
+    background:var(--surface); border-radius:16px; padding:20px; max-width:320px; width:100%;
+    display:flex; flex-direction:column; gap:16px; box-shadow:0 20px 50px rgba(0,0,0,.3);
+  }
+  .confirm-card p{ margin:0; font-size:14px; line-height:1.7; color:var(--text); white-space:pre-line; }
+  .confirm-actions{ display:flex; gap:8px; }
+  .confirm-actions button{ flex:1; }
+  .notify-textarea{
+    width:100%; font:inherit; font-size:12px; line-height:1.6; padding:10px;
+    border:1px solid var(--border); border-radius:10px; background:var(--surface-2); color:var(--text);
+    resize:vertical;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ 画面0: 役割選択（アプリ起動時に最初に表示） ============ -->
+  <section class="view" data-view="role" hidden>
+    <header class="topbar"><h1>交通費精算</h1></header>
+    <div class="content">
+      <h2 class="section-title" style="margin-top:0;">あなたのお名前を選んでください</h2>
+      <div id="roleApplicantList" class="chip-group" role="group" aria-label="申請者を選ぶ"></div>
+      <div class="mini-form">
+        <div class="mini-form-row">
+          <input type="text" id="roleNewApplicantName" placeholder="名前を追加（例：山田 太郎）">
+          <button type="button" id="roleAddApplicantBtn" class="btn-secondary">＋ 追加</button>
+        </div>
+        <span class="hint">一度選ぶと、この端末では次回から自動的にこの名前で開きます。他の人の申請は見えません。支払い担当者の方も、まずはご自身のお名前を選んでください（権限はあとから有効にできます）。</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 画面0b: 支払い担当者の合言葉入力 ============ -->
+  <section class="view" data-view="pin" hidden>
+    <header class="topbar">
+      <button class="btn-icon" id="pinBackBtn" aria-label="戻る">‹</button>
+      <h1>合言葉の入力</h1>
+    </header>
+    <div class="content">
+      <label>支払い担当者用の合言葉
+        <input type="text" id="pinInput" inputmode="numeric" placeholder="合言葉を入力">
+      </label>
+      <span class="field-error" id="pinError">合言葉が違います。もう一度お試しください。</span>
+      <button type="button" class="btn-primary btn-block" id="pinSubmitBtn">確認する</button>
+    </div>
+  </section>
+
+  <!-- ============ 画面1: トップ ============ -->
+  <section class="view" data-view="home" hidden>
+    <header class="topbar"><h1>交通費精算</h1><button class="btn-icon" id="syncNowBtn" aria-label="最新のデータに更新" title="最新のデータに更新" style="margin-left:auto;font-size:20px;">🔄</button></header>
+    <div class="content">
+      <div class="hint" id="roleBar" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"></div>
+      <button id="newClaimBtn" class="btn-primary btn-block">＋ 新しく申請する</button>
+      <button id="openSettingsBtn" class="btn-secondary btn-block">⚙ 設定</button>
+
+      <div class="stats" id="statsRow"></div>
+
+      <div id="dailyTotalsBlock"></div>
+
+      <h2 class="section-title">申請履歴</h2>
+      <div id="historyList" class="history-list"></div>
+    </div>
+  </section>
+
+  <!-- ============ 画面1b: 設定 ============ -->
+  <section class="view" data-view="settings" hidden>
+    <header class="topbar">
+      <button class="btn-icon" id="settingsBackBtn" aria-label="戻る">‹</button>
+      <h1>設定</h1>
+    </header>
+    <div class="content">
+      <div class="hint" id="settingsIdentityText" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"></div>
+      <button type="button" class="btn-secondary btn-block" id="switchNameBtn">名前を変える</button>
+
+      <div id="settingsPayerUnlockBlock"></div>
+
+      <button id="openPresetsBtn" class="btn-secondary btn-block">⚙ 申請者・区間の管理</button>
+      <button id="openNotifySettingsBtn" class="btn-secondary btn-block" hidden>✉ 通知先メールの設定</button>
+    </div>
+  </section>
+
+  <!-- ============ 画面2: 新規申請 ============ -->
+  <section class="view" data-view="form" hidden>
+    <header class="topbar">
+      <button class="btn-icon" id="formBackBtn" aria-label="戻る">‹</button>
+      <h1>新規申請</h1>
+    </header>
+    <form class="content" id="claimForm" novalidate>
+
+      <label>申請者
+        <div class="chip-group" id="applicantGroup" role="group" aria-label="申請者"></div>
+        <div id="applicantFixedName" class="hint" hidden></div>
+        <span class="field-error" id="errApplicant">申請者を選択してください</span>
+      </label>
+      <div class="mini-form" id="applicantAddForm">
+        <div class="mini-form-row">
+          <input type="text" id="qNewApplicantName" placeholder="名前を追加（例：山田 太郎）">
+          <button type="button" id="qAddApplicantBtn" class="btn-secondary">＋ 追加</button>
+        </div>
+        <span class="hint">一度追加すればタップで選べます。前回選んだ人はこの端末で自動的に選択されます。</span>
+        <button type="button" class="btn-danger-text" id="deleteSelectedApplicantBtn" style="align-self:flex-start;">選択中の申請者を一覧から削除する</button>
+      </div>
+
+      <label>利用日
+        <input type="date" id="fDate" required>
+      </label>
+
+      <label>店舗
+        <div class="chip-group" id="storeGroup" role="group" aria-label="店舗">
+          <button type="button" class="chip" data-value="座間店">座間店</button>
+          <button type="button" class="chip" data-value="洋光台店">洋光台店</button>
+        </div>
+        <span class="field-error" id="errStore">店舗を選択してください</span>
+      </label>
+
+      <label>経費種別
+        <div class="chip-group" id="categoryGroup" role="group" aria-label="経費種別">
+          <button type="button" class="chip" data-value="高速代">高速代</button>
+          <button type="button" class="chip" data-value="駐車代">駐車代</button>
+          <button type="button" class="chip" data-value="電車代">電車代</button>
+          <button type="button" class="chip" data-value="ガソリン代">ガソリン代</button>
+          <button type="button" class="chip" data-value="その他">その他</button>
+        </div>
+        <span class="field-error" id="errCategory">経費種別を選択してください</span>
+      </label>
+
+      <div id="destinationBlock" style="display:flex;flex-direction:column;gap:10px;">
+        <label>訪問先
+          <input type="text" id="fDestination" placeholder="例：〇〇株式会社">
+          <span class="field-error" id="errDestination">訪問先を入力してください</span>
+        </label>
+        <button type="button" class="collapse-toggle" id="destinationPresetToggle" aria-expanded="false" aria-controls="destinationPresetBody">
+          <span>よく使う訪問先から選ぶ（任意）</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="mini-form" id="destinationPresetBody" hidden>
+          <select id="destinationPresetSelect">
+            <option value="">－ 保存済みの訪問先から選択 －</option>
+          </select>
+          <button type="button" class="btn-danger-text" id="deleteDestinationPresetBtn" style="align-self:flex-start;">選択中の訪問先をプリセットから削除する</button>
+          <button type="button" class="btn-secondary" id="saveDestinationPresetBtn">＋ この訪問先をプリセットに保存する</button>
+        </div>
+      </div>
+
+      <label>利用目的
+        <div class="chip-group" id="purposeGroup" role="group" aria-label="利用目的">
+          <button type="button" class="chip" data-value="配達">配達</button>
+          <button type="button" class="chip" data-value="打合せ">打合せ</button>
+          <button type="button" class="chip" data-value="営業">営業</button>
+          <button type="button" class="chip" data-value="現場">現場</button>
+          <button type="button" class="chip" data-value="会議">会議</button>
+          <button type="button" class="chip" data-value="懇親会">懇親会</button>
+          <button type="button" class="chip" data-value="その他">その他</button>
+        </div>
+        <span class="field-error" id="errPurposeType">利用目的を選択してください</span>
+      </label>
+
+      <!-- 電車代：保存済みの区間から運賃を選ぶ（複数区間をまとめて申請したい場合は区間2も使えます） -->
+      <div id="trainRouteBlock" class="route-block" hidden>
+        <span class="mini-label">区間1</span>
+        <select id="trainPresetSelect">
+          <option value="">－ 保存済みの区間から選択 －</option>
+        </select>
+        <button type="button" class="btn-danger-text" id="deleteTrainPreset1Btn" style="align-self:flex-start;">選択中の区間をプリセットから削除する</button>
+        <button type="button" class="collapse-toggle" id="trainManual1Toggle" aria-expanded="false" aria-controls="trainManual1Body">
+          <span>出発駅・到着駅・運賃を直接入力する</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="mini-form" id="trainManual1Body" hidden>
+          <div class="mini-form-row">
+            <input type="text" id="qNewTrainFrom" placeholder="出発駅（例：座間）">
+            <input type="text" id="qNewTrainTo" placeholder="到着駅（例：新宿）">
+          </div>
+          <button type="button" class="btn-secondary" id="swapTrainBtn1">⇄ 出発駅と到着駅を入れ替える（往復の場合）</button>
+          <div class="amount-field">
+            <span>¥</span>
+            <input type="number" id="qNewTrainFare" min="0" step="1" placeholder="運賃（片道）">
+          </div>
+          <div class="mini-form-row">
+            <button type="button" class="btn-secondary" id="qUseOnceBtn">今回だけ使う（保存しない）</button>
+            <button type="button" class="btn-secondary" id="qAddTrainBtn">保存して次回も選べるようにする</button>
+          </div>
+        </div>
+        <div class="computed-amount">区間1：<strong id="trainRoute1Summary">未設定</strong></div>
+
+        <span class="mini-label">区間2（乗り継ぎなど、複数区間をまとめて1回で申請する場合。任意）</span>
+        <select id="trainPresetSelect2">
+          <option value="">－ 追加しない －</option>
+        </select>
+        <button type="button" class="btn-danger-text" id="deleteTrainPreset2Btn" style="align-self:flex-start;">選択中の区間をプリセットから削除する</button>
+        <button type="button" class="collapse-toggle" id="trainManual2Toggle" aria-expanded="false" aria-controls="trainManual2Body">
+          <span>出発駅・到着駅・運賃を直接入力する</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="mini-form" id="trainManual2Body" hidden>
+          <div class="mini-form-row">
+            <input type="text" id="qNewTrainFrom2" placeholder="出発駅（例：新宿）">
+            <input type="text" id="qNewTrainTo2" placeholder="到着駅（例：渋谷）">
+          </div>
+          <button type="button" class="btn-secondary" id="swapTrainBtn2">⇄ 出発駅と到着駅を入れ替える（往復の場合）</button>
+          <div class="amount-field">
+            <span>¥</span>
+            <input type="number" id="qNewTrainFare2" min="0" step="1" placeholder="運賃（片道）">
+          </div>
+          <div class="mini-form-row">
+            <button type="button" class="btn-secondary" id="qUseOnceBtn2">今回だけ使う（保存しない）</button>
+            <button type="button" class="btn-secondary" id="qAddTrainBtn2">保存して次回も選べるようにする</button>
+          </div>
+        </div>
+        <div class="computed-amount">区間2：<strong id="trainRoute2Summary">未設定</strong></div>
+
+        <span class="hint">区間1・区間2はそれぞれ独立して操作できます。両方設定すると運賃が合算され、金額欄に自動入力されます。</span>
+      </div>
+
+      <!-- ガソリン代：区間ごとに出発地・到着地・距離を入力し、自動計算（30円/km）。区間1は必須、区間2〜4は必要なときだけボタンで追加します -->
+      <div id="carRouteBlock" class="route-block" hidden>
+        <span class="mini-label">区間1：よく使う区間から選ぶ（任意）</span>
+        <select id="carPresetSelect1">
+          <option value="">－ 保存済みの区間から選択 －</option>
+        </select>
+        <button type="button" class="btn-danger-text" id="deleteCarPreset1Btn" style="align-self:flex-start;">選択中の区間をプリセットから削除する</button>
+        <span class="hint">登録済みの区間があれば、選ぶだけで出発地・到着地・距離・金額が自動入力されます。無ければ下から入力してください。</span>
+
+        <button type="button" class="collapse-toggle" id="carManual1Toggle" aria-expanded="false" aria-controls="carManual1Body">
+          <span>出発地・到着地・距離を直接入力する</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="mini-form" id="carManual1Body" hidden>
+        <span class="mini-label">出発地</span>
+        <input type="text" id="carOrigin1" placeholder="出発地を入力（例：座間本店）">
+
+        <span class="mini-label">到着地</span>
+        <input type="text" id="carDestination1" placeholder="例：〇〇株式会社">
+        <span class="field-error" id="errCarDestination1">到着地を入力してください</span>
+        <button type="button" class="btn-secondary" id="swapCarBtn1">⇄ 出発地と到着地を入れ替える（往復の場合）</button>
+
+        <span class="mini-label">走行距離（km）</span>
+        <input type="number" id="carDistanceKm1" min="0" step="0.1" placeholder="例：8.5">
+        <a href="#" target="_blank" rel="noopener noreferrer" id="carMapsBtn1" class="btn-secondary" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🗺 マップで経路と距離を調べる</a>
+        <button type="button" class="btn-secondary" id="saveCarPreset1Btn">＋ この区間をプリセットに保存する</button>
+        </div>
+        <div class="computed-amount">区間1：<strong id="carLeg1Summary">未設定</strong></div>
+
+        <button type="button" class="btn-secondary" id="addCarLegBtn2">＋ 区間2を追加する（もう1件の移動をまとめて申請する場合）</button>
+        <div class="mini-form" id="carLegBlock2" hidden>
+        <span class="mini-label">区間2：よく使う区間から選ぶ（任意）</span>
+        <select id="carPresetSelect2">
+          <option value="">－ 保存済みの区間から選択 －</option>
+        </select>
+        <button type="button" class="btn-danger-text" id="deleteCarPreset2Btn" style="align-self:flex-start;">選択中の区間をプリセットから削除する</button>
+
+        <button type="button" class="collapse-toggle" id="carManual2Toggle" aria-expanded="false" aria-controls="carManual2Body">
+          <span>出発地・到着地・距離を直接入力する</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="collapse-body" id="carManual2Body" hidden>
+        <span class="mini-label">出発地</span>
+        <input type="text" id="carOrigin2" placeholder="出発地を入力（例：座間本店）">
+
+        <span class="mini-label">到着地</span>
+        <input type="text" id="carDestination2" placeholder="例：〇〇株式会社">
+        <button type="button" class="btn-secondary" id="swapCarBtn2">⇄ 出発地と到着地を入れ替える（往復の場合）</button>
+
+        <span class="mini-label">走行距離（km）</span>
+        <input type="number" id="carDistanceKm2" min="0" step="0.1" placeholder="例：8.5">
+        <a href="#" target="_blank" rel="noopener noreferrer" id="carMapsBtn2" class="btn-secondary" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🗺 マップで経路と距離を調べる</a>
+        <button type="button" class="btn-secondary" id="saveCarPreset2Btn">＋ この区間をプリセットに保存する</button>
+        </div>
+        <div class="computed-amount">区間2：<strong id="carLeg2Summary">未設定</strong></div>
+          <button type="button" class="btn-danger-text" id="removeCarLegBtn2" style="align-self:flex-start;">区間2の入力を閉じる</button>
+        </div>
+
+        <button type="button" class="btn-secondary" id="addCarLegBtn3">＋ 区間3を追加する</button>
+        <div class="mini-form" id="carLegBlock3" hidden>
+        <span class="mini-label">区間3：よく使う区間から選ぶ（任意）</span>
+        <select id="carPresetSelect3">
+          <option value="">－ 保存済みの区間から選択 －</option>
+        </select>
+        <button type="button" class="btn-danger-text" id="deleteCarPreset3Btn" style="align-self:flex-start;">選択中の区間をプリセットから削除する</button>
+
+        <button type="button" class="collapse-toggle" id="carManual3Toggle" aria-expanded="false" aria-controls="carManual3Body">
+          <span>出発地・到着地・距離を直接入力する</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="collapse-body" id="carManual3Body" hidden>
+        <span class="mini-label">出発地</span>
+        <input type="text" id="carOrigin3" placeholder="出発地を入力（例：座間本店）">
+
+        <span class="mini-label">到着地</span>
+        <input type="text" id="carDestination3" placeholder="例：〇〇株式会社">
+        <button type="button" class="btn-secondary" id="swapCarBtn3">⇄ 出発地と到着地を入れ替える（往復の場合）</button>
+
+        <span class="mini-label">走行距離（km）</span>
+        <input type="number" id="carDistanceKm3" min="0" step="0.1" placeholder="例：8.5">
+        <a href="#" target="_blank" rel="noopener noreferrer" id="carMapsBtn3" class="btn-secondary" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🗺 マップで経路と距離を調べる</a>
+        <button type="button" class="btn-secondary" id="saveCarPreset3Btn">＋ この区間をプリセットに保存する</button>
+        </div>
+        <div class="computed-amount">区間3：<strong id="carLeg3Summary">未設定</strong></div>
+          <button type="button" class="btn-danger-text" id="removeCarLegBtn3" style="align-self:flex-start;">区間3の入力を閉じる</button>
+        </div>
+
+        <button type="button" class="btn-secondary" id="addCarLegBtn4">＋ 区間4を追加する</button>
+        <div class="mini-form" id="carLegBlock4" hidden>
+        <span class="mini-label">区間4：よく使う区間から選ぶ（任意）</span>
+        <select id="carPresetSelect4">
+          <option value="">－ 保存済みの区間から選択 －</option>
+        </select>
+        <button type="button" class="btn-danger-text" id="deleteCarPreset4Btn" style="align-self:flex-start;">選択中の区間をプリセットから削除する</button>
+
+        <button type="button" class="collapse-toggle" id="carManual4Toggle" aria-expanded="false" aria-controls="carManual4Body">
+          <span>出発地・到着地・距離を直接入力する</span><span class="collapse-arrow">▶</span>
+        </button>
+        <div class="collapse-body" id="carManual4Body" hidden>
+        <span class="mini-label">出発地</span>
+        <input type="text" id="carOrigin4" placeholder="出発地を入力（例：座間本店）">
+
+        <span class="mini-label">到着地</span>
+        <input type="text" id="carDestination4" placeholder="例：〇〇株式会社">
+        <button type="button" class="btn-secondary" id="swapCarBtn4">⇄ 出発地と到着地を入れ替える（往復の場合）</button>
+
+        <span class="mini-label">走行距離（km）</span>
+        <input type="number" id="carDistanceKm4" min="0" step="0.1" placeholder="例：8.5">
+        <a href="#" target="_blank" rel="noopener noreferrer" id="carMapsBtn4" class="btn-secondary" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🗺 マップで経路と距離を調べる</a>
+        <button type="button" class="btn-secondary" id="saveCarPreset4Btn">＋ この区間をプリセットに保存する</button>
+        </div>
+        <div class="computed-amount">区間4：<strong id="carLeg4Summary">未設定</strong></div>
+          <button type="button" class="btn-danger-text" id="removeCarLegBtn4" style="align-self:flex-start;">区間4の入力を閉じる</button>
+        </div>
+
+        <div class="computed-amount">合計（小数点以下は切り上げ）：<strong id="carComputedAmount">¥0</strong></div>
+        <span class="hint">追加した区間ごとに距離・金額が合算されます。金額欄は自動入力されますが、必要であれば手動で修正できます。</span>
+      </div>
+
+      <div class="computed-amount" id="finalRouteSummaryBlock" hidden>区間：<strong id="finalRouteSummaryText">－</strong></div>
+
+      <label>金額
+        <div class="amount-field">
+          <span>¥</span>
+          <input type="number" id="fAmount" inputmode="numeric" min="0" step="1" placeholder="0" required>
+        </div>
+        <span class="field-error" id="errAmount">金額を入力してください</span>
+      </label>
+
+      <label>メモ（任意）
+        <textarea id="fMemo" rows="3" placeholder="補足があれば入力してください"></textarea>
+      </label>
+
+      <div class="field-block" id="receiptBlock">
+        <span>レシート画像（任意）</span>
+        <div class="file-row">
+          <label class="file-label" for="fReceipt">画像を選択</label>
+          <input type="file" id="fReceipt" accept="image/*" style="display:none">
+          <img id="receiptPreview" hidden alt="レシートのプレビュー">
+        </div>
+        <span class="hint">タップするとカメラ起動または写真ライブラリから選べます。保存時に自動で縮小されます。</span>
+      </div>
+
+      <label>支払い担当者を選択
+        <div class="chip-group" id="payerGroup" role="group" aria-label="支払い担当者"></div>
+        <span class="field-error" id="errPayer">支払い担当者を選択してください</span>
+      </label>
+
+      <button type="submit" class="btn-primary btn-block">この内容で申請する</button>
+    </form>
+  </section>
+
+  <!-- ============ 画面3: 申請詳細 ============ -->
+  <section class="view" data-view="detail" hidden>
+    <header class="topbar">
+      <button class="btn-icon" id="detailBackBtn" aria-label="戻る">‹</button>
+      <h1>申請内容</h1>
+    </header>
+    <div class="content" id="detailContent"></div>
+  </section>
+
+  <!-- ============ 画面4: 区間・距離の管理 ============ -->
+  <section class="view" data-view="presets" hidden>
+    <header class="topbar">
+      <button class="btn-icon" id="presetsBackBtn" aria-label="戻る">‹</button>
+      <h1>申請者・区間の管理</h1>
+    </header>
+    <div class="content">
+      <div>
+        <h2 class="section-title" style="margin-top:0;">申請者</h2>
+        <div id="applicantPresetList" class="history-list" style="margin-top:8px;"></div>
+        <span class="hint">申請者の追加は、新規申請画面の「申請者」欄から行えます。</span>
+      </div>
+      <div>
+        <h2 class="section-title">訪問先</h2>
+        <div id="destinationPresetList" class="history-list" style="margin-top:8px;"></div>
+        <span class="hint">訪問先の追加は、新規申請画面の「訪問先」欄から行えます。</span>
+      </div>
+      <div>
+        <h2 class="section-title">電車代の区間（切符代）</h2>
+        <div id="trainPresetList" class="history-list" style="margin-top:8px;"></div>
+      </div>
+      <div>
+        <h2 class="section-title">ガソリン代の区間</h2>
+        <div id="carPresetList" class="history-list" style="margin-top:8px;"></div>
+      </div>
+      <span class="hint">区間の追加は、新規申請画面で「電車代」または「ガソリン代」を選ぶと表示される入力欄から行えます。</span>
+    </div>
+  </section>
+
+  <!-- ============ 画面5: 通知先メールの設定（支払い担当者のみ） ============ -->
+  <section class="view" data-view="notifySettings" hidden>
+    <header class="topbar">
+      <button class="btn-icon" id="notifySettingsBackBtn" aria-label="戻る">‹</button>
+      <h1>通知先メールの設定</h1>
+    </header>
+    <div class="content">
+      <span class="hint">
+        ここで設定したメールアドレスは、Google Apps Script側に保存されます。誰がこのアプリで「申請」「承認」「受領済み」の操作をしても、常にここで設定した宛先へ通知が届くようになります。
+      </span>
+      <div id="notifySettingsLoading" class="empty-state">読み込み中…</div>
+      <div id="notifySettingsBody" hidden style="display:flex;flex-direction:column;gap:16px;">
+
+        <div>
+          <h2 class="section-title" style="margin-top:0;">支払い担当者リストの管理（申請・受領済みの通知）</h2>
+          <span class="hint">ここで登録した人だけが、新規申請画面の「支払い担当者を選択」に表示されます。店舗ごとに誰が対象になるかもあわせて設定してください。メールアドレスを入力しておくと、「新しい申請が来たとき」「受領済みになったとき」に、その支払い担当者へメールが届きます。</span>
+          <div id="payerRosterList" class="history-list" style="margin-top:8px;"></div>
+          <div class="mini-form">
+            <div class="mini-form-row">
+              <input type="text" id="newPayerRosterName" placeholder="名前を追加（例：山田 太郎）">
+            </div>
+            <span class="mini-label">対象の店舗</span>
+            <div class="chip-group" id="newPayerRosterStores" role="group" aria-label="対象店舗">
+              <button type="button" class="chip" data-value="座間店">座間店</button>
+              <button type="button" class="chip" data-value="洋光台店">洋光台店</button>
+            </div>
+            <button type="button" id="addPayerRosterBtn" class="btn-secondary">＋ 追加</button>
+          </div>
+        </div>
+
+        <div>
+          <h2 class="section-title">申請者ごとのメール（承認済みの通知）</h2>
+          <span class="hint">「承認済みになったとき」に、その申請をした本人のアドレスへメールが届きます。登録済みの申請者名の横にメールアドレスを入力してください（空欄の人には送られません）。</span>
+          <div id="applicantEmailList" style="display:flex;flex-direction:column;gap:10px;margin-top:8px;"></div>
+        </div>
+
+        <div>
+          <h2 class="section-title">承認済み・受領済みのメール通知</h2>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" id="notifyOnApprovedReceivedCheckbox" checked style="width:auto;">
+            <span>「承認済み」「受領済み」になったときもメールで知らせる（オフにすると、新しい申請が来たときだけ通知します）</span>
+          </label>
+        </div>
+
+        <button type="button" class="btn-primary btn-block" id="saveNotifySettingsBtn">この内容で保存する</button>
+        <button type="button" class="btn-secondary btn-block" id="reloadNotifySettingsBtn">サーバーの設定を読み込みなおす</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 通知（トースト）・確認ダイアログ：alert()/confirm()の代わり -->
+  <div class="toast" id="toast"></div>
+  <div class="confirm-overlay" id="confirmOverlay" hidden>
+    <div class="confirm-card">
+      <p id="confirmMessage"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn-secondary" id="confirmCancelBtn">キャンセル</button>
+        <button type="button" class="btn-primary" id="confirmOkBtn">削除する</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =========================================================
+     データの保存・読み込み（localStorage = ブラウザの中の保存領域）
+     ========================================================= */
+  var STORAGE_KEY = "expenseClaims_v1";
+
+  function loadClaims(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){
+      // プライベートブラウズ中などlocalStorageが使えない場合はここに来ます
+      console.warn("読み込みに失敗しました", e);
+      return [];
+    }
+  }
+
+  function saveClaims(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(claims));
+    }catch(e){
+      showToast("保存に失敗しました。レシート画像のサイズが大きすぎる可能性があります。");
+    }
+  }
+
+  var claims = loadClaims(); // アプリ起動時に、保存済みの申請一覧を読み込む
+
+  function uid(){
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "id-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  // 前回入力した申請者名を覚えておき、次回の入力の手間を減らす
+  var LAST_APPLICANT_KEY = "lastApplicantName_v1";
+  function loadLastApplicantName(){
+    try{ return localStorage.getItem(LAST_APPLICANT_KEY) || ""; }catch(e){ return ""; }
+  }
+  function saveLastApplicantName(name){
+    try{ localStorage.setItem(LAST_APPLICANT_KEY, name); }catch(e){ /* 保存できなくても致命的ではないので無視 */ }
+  }
+
+  /* =========================================================
+     申請者（よく使う名前）
+     端末（スマートフォン）ごとにlocalStorageへ保存されるため、
+     「この端末を使っている人」を自動的に選んだ状態にできます。
+     ========================================================= */
+  var APPLICANT_KEY = "applicantPresets_v1";
+  function loadApplicantPresets(){
+    try{ var r = localStorage.getItem(APPLICANT_KEY); return r ? JSON.parse(r) : []; }
+    catch(e){ return []; }
+  }
+  function saveApplicantPresets(){
+    try{ localStorage.setItem(APPLICANT_KEY, JSON.stringify(applicantPresets)); }
+    catch(e){ showToast("申請者の保存に失敗しました。"); }
+  }
+  var applicantPresets = loadApplicantPresets();
+
+  // 以前のバージョンで「前回入力した申請者名」だけが保存されているケース
+  // （申請者一覧がまだ空）では、その名前を自動的に一覧へ追加しておく。
+  // これをしないと、申請者を選ぶチップが1つも無い状態になってしまう。
+  (function migrateLegacyApplicantName(){
+    if(applicantPresets.length === 0){
+      var legacyName = loadLastApplicantName();
+      if(legacyName){
+        applicantPresets.push({ id: uid(), name: legacyName });
+        saveApplicantPresets();
+      }
+    }
+  })();
+
+  // 「姓 名」のように、姓と名の間にスペース（半角・全角どちらでも可）が
+  // 入っているかどうかを判定する（＝フルネームで入力されているか）
+  function isFullName(name){
+    var parts = (name || "").split(/[\s　]+/).filter(function(s){ return s.length > 0; });
+    return parts.length >= 2;
+  }
+
+  function addApplicantPreset(name){
+    name = (name || "").trim();
+    if(!name) return null;
+    var existing = applicantPresets.find(function(p){ return p.name === name; });
+    if(!existing){
+      existing = { id: uid(), name: name };
+      applicantPresets.push(existing);
+      saveApplicantPresets();
+    }
+    return existing;
+  }
+
+  function renderApplicantPresetList(){
+    var el = document.getElementById("applicantPresetList");
+    if(!el) return;
+    el.innerHTML = "";
+    if(applicantPresets.length===0){
+      var e = document.createElement("div");
+      e.className = "empty-state";
+      e.textContent = "まだ登録がありません。新規申請画面の「申請者」欄から名前を追加できます。";
+      el.appendChild(e);
+      return;
+    }
+    applicantPresets.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); }).forEach(function(p){
+      var row = document.createElement("div");
+      row.className = "preset-row";
+      row.innerHTML = '<div class="info"><b></b></div><button type="button" class="preset-del">削除</button>';
+      row.querySelector("b").textContent = p.name;
+      row.querySelector(".preset-del").addEventListener("click", function(){
+        showConfirm('「' + p.name + '」を削除しますか？', function(){
+          applicantPresets = applicantPresets.filter(function(x){ return x.id !== p.id; });
+          saveApplicantPresets();
+          if(loadLastApplicantName() === p.name) saveLastApplicantName("");
+          renderApplicantPresetList();
+          renderApplicantChips();
+        }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+      });
+      el.appendChild(row);
+    });
+  }
+
+  /* =========================================================
+     通知（トースト）・確認ダイアログ
+     このページはArtifactのサンドボックス内で動くため、標準の
+     alert()やconfirm()が表示されない環境があります。
+     そのため、ページ内で完結する自前の通知・確認UIを使います。
+     ========================================================= */
+  var toastEl = document.getElementById("toast");
+  var toastTimer = null;
+  function showToast(message){
+    toastEl.textContent = message;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 2800);
+  }
+
+  var confirmOverlay = document.getElementById("confirmOverlay");
+  var confirmMessage = document.getElementById("confirmMessage");
+  var confirmOkBtn = document.getElementById("confirmOkBtn");
+  var confirmCancelBtn = document.getElementById("confirmCancelBtn");
+  var confirmCallback = null;
+  // options.okLabel / options.cancelLabel / options.danger（削除など危険な操作は赤いボタンにする）
+  function showConfirm(message, onConfirm, options){
+    options = options || {};
+    confirmMessage.textContent = message;
+    confirmCallback = onConfirm;
+    confirmOkBtn.textContent = options.okLabel || "OK";
+    confirmCancelBtn.textContent = options.cancelLabel || "キャンセル";
+    confirmOkBtn.className = options.danger ? "btn-danger" : "btn-primary";
+    confirmOverlay.hidden = false;
+  }
+  function hideConfirm(){
+    confirmOverlay.hidden = true;
+    confirmCallback = null;
+  }
+  confirmOkBtn.addEventListener("click", function(){
+    var cb = confirmCallback;
+    hideConfirm();
+    if(cb) cb();
+  });
+  confirmCancelBtn.addEventListener("click", hideConfirm);
+  confirmOverlay.addEventListener("click", function(ev){
+    if(ev.target === confirmOverlay) hideConfirm();
+  });
+
+  /* ---- 自動通知（Google Apps Script経由でLINE WORKSに送信） ----
+     NOTIFY_ENDPOINT_URL に、Google Apps Scriptを「ウェブアプリ」として
+     デプロイしたときに発行されるURL（https://script.google.com/macros/s/.../exec）
+     を貼り付けると、次の3つのタイミングで自動的に通知が送られます。
+       1) 申請者が新しく登録したとき（type: "new_claim"）　→ 支払い担当者へ
+       2) 支払い担当者が「承認済み」に変更したとき（type: "approved"）→ 申請者へ
+       3) 申請者が「受領済み」に変更したとき（type: "received"）→ 支払い担当者へ
+     誰が誰に届くかの振り分け（LINE WORKSのユーザー個別宛て）はGoogle Apps Script側の
+     設定で行うため、このアプリ側では「何があったか」を知らせるだけです。
+     未設定の場合は何もしません。失敗した場合もトーストで知らせるだけです。 */
+  var NOTIFY_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbx5V7EUEelb09VYv-1NWNXT8fpoKjcyCzbF8HSsR19KZ-K9k_BZmAA9CdrvE6jXFKtQuA/exec";
+
+  // このURL（NOTIFY_ENDPOINT_URL）はアプリのHTMLの中に書かれているため、
+  // 仕組み上どうしても外部から見えてしまいます。何のチェックもしないと、
+  // このURLさえ知っていれば誰でも直接データを読み書きできてしまうため、
+  // 「アプリからの正規のリクエストであること」の合言葉として、すべての
+  // リクエストにこのAPI_SECRETを付けて送るようにしています。
+  // Google Apps Script側（email-notify-relay.gsのAPI_SECRET）と必ず同じ値に揃えてください。
+  var API_SECRET = "MoeZpV3ntBmiFc5FglinQImuNLU0XE4a";
+
+  function sendAutoNotification(record, eventType){
+    if(!NOTIFY_ENDPOINT_URL) return;
+    eventType = eventType || "new_claim";
+    var payload = {
+      type: eventType,
+      apiSecret: API_SECRET,
+      applicantName: record.applicantName,
+      store: record.store || "",
+      date: record.date,
+      category: record.category,
+      destination: record.destination,
+      purposeType: record.purposeType,
+      amount: record.amount,
+      routeNote: record.routeNote || "",
+      approvedByName: record.approvedByName || "",
+      selectedPayerName: record.selectedPayerName || ""
+    };
+    var toastOnSuccess = {
+      new_claim: "支払い担当者に自動で通知しました。",
+      approved: "承認されたことを申請者へ自動で通知しました。",
+      received: "受領済みになったことを支払い担当者へ自動で通知しました。"
+    }[eventType] || "自動で通知しました。";
+    fetch(NOTIFY_ENDPOINT_URL, {
+      method: "POST",
+      // Content-Typeをtext/plainにすることで、Google Apps Script側のCORSプリフライトを回避しています
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    }).then(function(){
+      showToast(toastOnSuccess);
+    }).catch(function(err){
+      console.warn("自動通知に失敗しました", err);
+      showToast("自動通知に失敗しました。関係者に直接ご連絡ください。");
+    });
+  }
+
+  /* =========================================================
+     申請データのサーバー同期（共有のGoogleスプレッドシート）
+     ------------------------------------------------------------
+     このアプリは、これまで通り各端末のlocalStorageにもデータを
+     保存しますが、複数人・複数端末で同じ申請データを見られるように、
+     同じGoogle Apps Script経由で共有のGoogleスプレッドシートにも
+     保存・取得するようにしています。
+     ネットワークにつながらないときでも、各端末に保存された内容で
+     引き続き操作できるようにし（今まで通りオフラインでも動きます）、
+     つながったときに自動的に・裏側で追いつく、という考え方です。
+     そのため、登録・承認・受領済み・削除などの操作をしたその場では
+     「サーバーへの保存に失敗しました」といった通知はあえて出さず、
+     ホーム画面右上の「🔄 更新」ボタンを押したときだけ、成功・失敗を
+     はっきり知らせるようにしています。
+     ========================================================= */
+
+  // 申請（record）のうち、_で始まる内部管理用の項目（同期状況など）を除いたものを返す
+  function stripSyncFlags(record){
+    var copy = {};
+    Object.keys(record).forEach(function(k){
+      if(k.indexOf("_") !== 0) copy[k] = record[k];
+    });
+    return copy;
+  }
+
+  function syncCreateClaim(record){
+    return notifySettingsRequest({ type: "create_claim", claim: stripSyncFlags(record) })
+      .then(function(res){
+        if(res && res.ok){
+          record._serverSynced = true;
+          record._createdOnServer = true;
+          saveClaims();
+        }
+        return res;
+      })
+      .catch(function(err){ console.warn("申請の保存（サーバー側）に失敗しました", err); });
+  }
+
+  function syncUpdateClaim(id, patch){
+    return notifySettingsRequest({ type: "update_claim", id: id, patch: patch })
+      .then(function(res){
+        if(res && res.ok){
+          var c = claims.find(function(x){ return x.id === id; });
+          if(c){ c._serverSynced = true; saveClaims(); }
+        }
+        return res;
+      })
+      .catch(function(err){ console.warn("申請の更新（サーバー側）に失敗しました", err); });
+  }
+
+  function syncDeleteClaim(id){
+    return notifySettingsRequest({ type: "delete_claim", id: id })
+      .catch(function(err){ console.warn("申請の削除（サーバー側）に失敗しました", err); });
+  }
+
+  // この申請の「今の内容」をサーバーに反映させる（サーバーにまだ無ければ新規作成、あれば更新）
+  function syncClaimUpsert(c){
+    c._serverSynced = false;
+    if(c._createdOnServer){
+      return syncUpdateClaim(c.id, stripSyncFlags(c));
+    }
+    return syncCreateClaim(c);
+  }
+
+  // サーバー上の最新データを取得し、画面に反映する。
+  // その前に、まだサーバーに届いていないかもしれないローカルの変更があれば、先に送っておく
+  // （そうしないと、サーバー側の内容で上書きされたときに、その変更が消えてしまうため）。
+  var syncInProgress = false;
+  function syncWithServer(showFeedback){
+    if(syncInProgress) return Promise.resolve();
+    syncInProgress = true;
+    var pending = claims.filter(function(c){ return !c._serverSynced; });
+    var retry = pending.map(function(c){ return syncClaimUpsert(c); });
+    return Promise.all(retry).then(function(){
+      return notifySettingsRequest({ type: "list_claims" });
+    }).then(function(res){
+      if(!res || !res.ok || !Array.isArray(res.claims)){
+        throw new Error("list_claims failed: " + JSON.stringify(res));
+      }
+      res.claims.forEach(function(c){ c._serverSynced = true; c._createdOnServer = true; });
+      claims = res.claims;
+      saveClaims();
+      refreshHome();
+      if(showFeedback) showToast("最新のデータに更新しました。");
+    }).catch(function(err){
+      console.warn("サーバーとの同期に失敗しました", err);
+      if(showFeedback) showToast("サーバーに接続できませんでした。ネットワークをご確認のうえ、もう一度お試しください。");
+    }).finally(function(){
+      syncInProgress = false;
+    });
+  }
+
+  /* =========================================================
+     通知先メールの設定（支払い担当者用）
+     以前は Google Apps Script のコードを直接書き換える必要が
+     ありましたが、ここではアプリの画面から「支払い担当者への
+     メール」「申請者ごとのメール」を登録・変更できるようにします。
+     実際のデータはこのアプリの中ではなく、Google Apps Script側に
+     （PropertiesServiceという場所に）保存されます。そうすることで、
+     誰の端末で操作しても、常に同じ宛先へ通知が届くようにしています。
+     合言葉（PAYER_PIN）を、保存・読み込みのときに一緒に送ることで、
+     この合言葉を知らない人が勝手に書き換えられないようにしています
+     （これも簡易的な仕切りであり、本格的なセキュリティではありません）。
+     ========================================================= */
+  function notifySettingsRequest(payload){
+    payload = Object.assign({ apiSecret: API_SECRET }, payload);
+    return fetch(NOTIFY_ENDPOINT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    }).then(function(res){ return res.json(); });
+  }
+
+  var notifySettingsLoadingEl = document.getElementById("notifySettingsLoading");
+  var notifySettingsBodyEl = document.getElementById("notifySettingsBody");
+  var payerRosterListEl = document.getElementById("payerRosterList");
+  var applicantEmailListEl = document.getElementById("applicantEmailList");
+  var currentApplicantEmails = {};
+
+  /* ---- 支払い担当者リスト（誰が・どの店舗の担当か）と、それぞれのメールアドレス ----
+     PAYER_ROSTER_DEFAULT は、サーバーからまだ一度も取得できていないとき（オフラインなど）に
+     使う初期値。新規申請画面の「支払い担当者を選択」欄は、常にこの payerRoster をもとに
+     店舗ごとの候補を出し分ける。 ---- */
+  var PAYER_ROSTER_DEFAULT = [
+    { id: "p1", name: "須藤", stores: ["座間店"] },
+    { id: "p2", name: "竹井", stores: ["座間店"] },
+    { id: "p3", name: "児玉", stores: ["座間店"] },
+    { id: "p4", name: "藤島", stores: ["洋光台店"] },
+    { id: "p5", name: "小田嶋", stores: ["洋光台店"] }
+  ];
+  var payerRoster = PAYER_ROSTER_DEFAULT.map(function(p){ return { id:p.id, name:p.name, stores:p.stores.slice() }; });
+  var currentPayerRosterDraft = [];
+  var currentPayerNameEmails = {};
+  var currentNotifyOnApprovedReceived = true;
+  var newPayerRosterSelectedStores = [];
+
+  // アプリを開いたときに、共有の支払い担当者リストをサーバーから取得しておく（合言葉不要・全員が使える）
+  function loadPayerRosterFromServer(){
+    return notifySettingsRequest({ type: "get_payer_roster" }).then(function(res){
+      if(res && res.ok && Array.isArray(res.payerRoster) && res.payerRoster.length > 0){
+        payerRoster = res.payerRoster;
+      }
+    }).catch(function(err){
+      console.warn("支払い担当者リストの取得に失敗しました（初期値を使用します）", err);
+    });
+  }
+
+  function renderPayerRosterList(){
+    payerRosterListEl.innerHTML = "";
+    if(currentPayerRosterDraft.length === 0){
+      var e = document.createElement("div");
+      e.className = "empty-state";
+      e.textContent = "まだ登録がありません。下の欄から追加してください。";
+      payerRosterListEl.appendChild(e);
+      return;
+    }
+    currentPayerRosterDraft.forEach(function(p, idx){
+      var row = document.createElement("div");
+      row.className = "preset-row";
+      row.innerHTML =
+        '<div class="info" style="flex:1;">' +
+          '<b></b><span class="hint stores-text" style="display:block;margin-top:2px;"></span>' +
+          '<input type="text" class="roster-email-input" placeholder="メールアドレス（任意）" inputmode="email" style="margin-top:6px;width:100%;">' +
+        '</div>' +
+        '<button type="button" class="preset-del">削除</button>';
+      row.querySelector("b").textContent = p.name;
+      row.querySelector(".stores-text").textContent = "対象店舗：" + ((p.stores && p.stores.length) ? p.stores.join("・") : "未設定");
+      var emailInput = row.querySelector(".roster-email-input");
+      emailInput.value = currentPayerNameEmails[p.name] || "";
+      emailInput.addEventListener("change", function(){
+        var v = emailInput.value.trim();
+        if(v){ currentPayerNameEmails[p.name] = v; } else { delete currentPayerNameEmails[p.name]; }
+      });
+      row.querySelector(".preset-del").addEventListener("click", function(){
+        delete currentPayerNameEmails[p.name];
+        currentPayerRosterDraft.splice(idx, 1);
+        renderPayerRosterList();
+      });
+      payerRosterListEl.appendChild(row);
+    });
+  }
+
+  var newPayerRosterStoresEl = document.getElementById("newPayerRosterStores");
+  if(newPayerRosterStoresEl){
+    newPayerRosterStoresEl.querySelectorAll(".chip").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var v = btn.dataset.value;
+        var idx = newPayerRosterSelectedStores.indexOf(v);
+        if(idx === -1){
+          newPayerRosterSelectedStores.push(v);
+          btn.setAttribute("aria-pressed", "true");
+        }else{
+          newPayerRosterSelectedStores.splice(idx, 1);
+          btn.setAttribute("aria-pressed", "false");
+        }
+      });
+    });
+  }
+
+  document.getElementById("addPayerRosterBtn").addEventListener("click", function(){
+    var nameInput = document.getElementById("newPayerRosterName");
+    var name = nameInput.value.trim();
+    if(!name){ showToast("名前を入力してください。"); return; }
+    if(newPayerRosterSelectedStores.length === 0){ showToast("対象の店舗を選んでください。"); return; }
+    if(currentPayerRosterDraft.some(function(p){ return p.name === name; })){ showToast("同じ名前の支払い担当者がすでに登録されています。"); return; }
+    currentPayerRosterDraft.push({ id: "p_" + Date.now() + "_" + Math.random().toString(36).slice(2,7), name: name, stores: newPayerRosterSelectedStores.slice() });
+    nameInput.value = "";
+    newPayerRosterSelectedStores = [];
+    newPayerRosterStoresEl.querySelectorAll(".chip").forEach(function(b){ b.setAttribute("aria-pressed", "false"); });
+    renderPayerRosterList();
+    showToast("「" + name + "」を追加しました。");
+  });
+
+  function renderApplicantEmailList(){
+    applicantEmailListEl.innerHTML = "";
+    if(applicantPresets.length === 0){
+      var e = document.createElement("div");
+      e.className = "empty-state";
+      e.textContent = "まだ申請者が登録されていません。新規申請画面の「申請者」欄から追加できます。";
+      applicantEmailListEl.appendChild(e);
+      return;
+    }
+    applicantPresets.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); }).forEach(function(p){
+      var row = document.createElement("label");
+      row.style.gap = "4px";
+      var span = document.createElement("span");
+      span.textContent = p.name;
+      var input = document.createElement("input");
+      input.type = "text";
+      input.inputMode = "email";
+      input.placeholder = "例：yamada@example.co.jp";
+      input.value = currentApplicantEmails[p.name] || "";
+      input.dataset.applicantName = p.name;
+      row.appendChild(span);
+      row.appendChild(input);
+      applicantEmailListEl.appendChild(row);
+    });
+  }
+
+  function openNotifySettings(){
+    showView("notifySettings");
+    notifySettingsBodyEl.hidden = true;
+    notifySettingsLoadingEl.hidden = false;
+    notifySettingsLoadingEl.textContent = "読み込み中…";
+    notifySettingsRequest({ type: "get_settings", key: PAYER_PIN }).then(function(res){
+      if(!res || res.ok === false){
+        throw new Error((res && res.error) || "unknown");
+      }
+      currentPayerRosterDraft = (Array.isArray(res.payerRoster) && res.payerRoster.length > 0)
+        ? res.payerRoster.map(function(p){ return { id:p.id, name:p.name, stores:(p.stores||[]).slice() }; })
+        : PAYER_ROSTER_DEFAULT.map(function(p){ return { id:p.id, name:p.name, stores:p.stores.slice() }; });
+      currentPayerNameEmails = (res.payerNameEmails && typeof res.payerNameEmails === "object") ? res.payerNameEmails : {};
+      currentApplicantEmails = (res.applicantEmails && typeof res.applicantEmails === "object") ? res.applicantEmails : {};
+      currentNotifyOnApprovedReceived = (res.notifyOnApprovedReceived === false) ? false : true;
+      document.getElementById("notifyOnApprovedReceivedCheckbox").checked = currentNotifyOnApprovedReceived;
+      renderPayerRosterList();
+      renderApplicantEmailList();
+      notifySettingsLoadingEl.hidden = true;
+      notifySettingsBodyEl.hidden = false;
+    }).catch(function(err){
+      console.warn("通知設定の読み込みに失敗しました", err);
+      // 読み込みに失敗しても、空の状態から新しく入力して保存できるようにしておく
+      currentPayerRosterDraft = PAYER_ROSTER_DEFAULT.map(function(p){ return { id:p.id, name:p.name, stores:p.stores.slice() }; });
+      currentPayerNameEmails = {};
+      currentApplicantEmails = {};
+      currentNotifyOnApprovedReceived = true;
+      document.getElementById("notifyOnApprovedReceivedCheckbox").checked = true;
+      renderPayerRosterList();
+      renderApplicantEmailList();
+      notifySettingsLoadingEl.hidden = true;
+      notifySettingsBodyEl.hidden = false;
+      showToast("現在の設定を読み込めませんでした。新しく入力して保存することはできます。");
+    });
+  }
+
+  document.getElementById("openNotifySettingsBtn").addEventListener("click", openNotifySettings);
+  document.getElementById("reloadNotifySettingsBtn").addEventListener("click", openNotifySettings);
+  document.getElementById("notifySettingsBackBtn").addEventListener("click", function(){
+    showView("home");
+  });
+
+  document.getElementById("saveNotifySettingsBtn").addEventListener("click", function(){
+    var applicantEmails = {};
+    applicantEmailListEl.querySelectorAll("input[data-applicant-name]").forEach(function(input){
+      var name = input.dataset.applicantName;
+      var email = input.value.trim();
+      if(email) applicantEmails[name] = email;
+    });
+    var notifyOnApprovedReceived = document.getElementById("notifyOnApprovedReceivedCheckbox").checked;
+    var btn = document.getElementById("saveNotifySettingsBtn");
+    var originalLabel = btn.textContent;
+    btn.textContent = "保存しています…";
+    btn.disabled = true;
+    notifySettingsRequest({
+      type: "save_settings",
+      key: PAYER_PIN,
+      payerRoster: currentPayerRosterDraft,
+      payerNameEmails: currentPayerNameEmails,
+      applicantEmails: applicantEmails,
+      notifyOnApprovedReceived: notifyOnApprovedReceived
+    }).then(function(res){
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+      if(!res || res.ok === false){
+        showToast("保存に失敗しました：" + ((res && res.error) || "不明なエラー"));
+        return;
+      }
+      currentApplicantEmails = applicantEmails;
+      currentNotifyOnApprovedReceived = notifyOnApprovedReceived;
+      // 新規申請画面の「支払い担当者を選択」も、保存した最新のリストを使うようにする
+      payerRoster = currentPayerRosterDraft.map(function(p){ return { id:p.id, name:p.name, stores:(p.stores||[]).slice() }; });
+      showToast("通知先メールの設定を保存しました。");
+    }).catch(function(err){
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+      console.warn("通知設定の保存に失敗しました", err);
+      showToast("保存に失敗しました。通信状況をご確認のうえ、もう一度お試しください。");
+    });
+  });
+
+  /* =========================================================
+     区間プリセット（電車代の運賃・ガソリン代の距離）
+     運賃や距離は会社ごと・店舗ごとに違うため、こちらでは
+     金額を決め打ちせず「一度調べたら保存して使い回す」方式にしています
+     ========================================================= */
+  var TRAIN_KEY = "trainPresets_v1";
+  var CAR_KEY = "carPresets_v1";
+  var DESTINATION_KEY = "destinationPresets_v1";
+
+  function loadTrainPresets(){
+    try{ var r = localStorage.getItem(TRAIN_KEY); return r ? JSON.parse(r) : []; }
+    catch(e){ return []; }
+  }
+  function saveTrainPresets(){
+    try{ localStorage.setItem(TRAIN_KEY, JSON.stringify(trainPresets)); }
+    catch(e){ showToast("区間の保存に失敗しました。"); }
+  }
+  function loadCarPresets(){
+    try{ var r = localStorage.getItem(CAR_KEY); return r ? JSON.parse(r) : []; }
+    catch(e){ return []; }
+  }
+  function saveCarPresets(){
+    try{ localStorage.setItem(CAR_KEY, JSON.stringify(carPresets)); }
+    catch(e){ showToast("区間の保存に失敗しました。"); }
+  }
+  function loadDestinationPresets(){
+    try{ var r = localStorage.getItem(DESTINATION_KEY); return r ? JSON.parse(r) : []; }
+    catch(e){ return []; }
+  }
+  function saveDestinationPresets(){
+    try{ localStorage.setItem(DESTINATION_KEY, JSON.stringify(destinationPresets)); }
+    catch(e){ showToast("訪問先の保存に失敗しました。"); }
+  }
+  // ガソリン代の金額計算：距離(km)は小数点以下を切り上げてから 30円 を掛ける
+  function calcCarYen(km){
+    return Math.ceil(Number(km) || 0) * 30;
+  }
+
+  var trainPresets = loadTrainPresets();
+  var carPresets = loadCarPresets();
+  var destinationPresets = loadDestinationPresets();
+
+  // 同じ区間（出発→到着）がすでにあれば金額だけ上書きし、無ければ新規追加する
+  function upsertTrainPreset(from, to, fare){
+    var existing = trainPresets.find(function(p){ return p.from===from && p.to===to; });
+    if(existing){ existing.fare = fare; }
+    else{ existing = { id: uid(), from: from, to: to, fare: fare }; trainPresets.push(existing); }
+    saveTrainPresets();
+    return existing;
+  }
+  function upsertCarPreset(origin, destination, distanceKm){
+    var existing = carPresets.find(function(p){ return p.origin===origin && p.destination===destination; });
+    if(existing){ existing.distanceKm = distanceKm; }
+    else{ existing = { id: uid(), origin: origin, destination: destination, distanceKm: distanceKm }; carPresets.push(existing); }
+    saveCarPresets();
+    return existing;
+  }
+  function upsertDestinationPreset(name){
+    name = (name || "").trim();
+    if(!name) return null;
+    var existing = destinationPresets.find(function(p){ return p.name === name; });
+    if(!existing){
+      existing = { id: uid(), name: name };
+      destinationPresets.push(existing);
+      saveDestinationPresets();
+    }
+    return existing;
+  }
+
+  function populateTrainPresetSelect(){
+    ["trainPresetSelect","trainPresetSelect2"].forEach(function(selId){
+      var sel = document.getElementById(selId);
+      if(!sel) return;
+      var current = sel.value;
+      sel.innerHTML = selId === "trainPresetSelect2"
+        ? '<option value="">－ 追加しない －</option>'
+        : '<option value="">－ 区間を選択 －</option>';
+      trainPresets.slice().sort(function(a,b){ return (a.from+a.to).localeCompare(b.from+b.to,"ja"); }).forEach(function(p){
+        var opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.from + " → " + p.to + "（" + formatYen(p.fare) + "）";
+        sel.appendChild(opt);
+      });
+      if(trainPresets.some(function(p){ return p.id===current; })) sel.value = current;
+    });
+  }
+  function populateCarPresetSelect(){
+    for(var _n=1; _n<=4; _n++){
+      var sel = document.getElementById("carPresetSelect" + _n);
+      if(!sel) continue;
+      var current = sel.value;
+      sel.innerHTML = '<option value="">－ 保存済みの区間から選択 －</option>';
+      carPresets.slice().sort(function(a,b){ return (a.origin+a.destination).localeCompare(b.origin+b.destination,"ja"); }).forEach(function(p){
+        var opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.origin + " → " + p.destination + "（" + p.distanceKm + "km・" + formatYen(calcCarYen(p.distanceKm)) + "）";
+        sel.appendChild(opt);
+      });
+      if(carPresets.some(function(p){ return p.id===current; })) sel.value = current;
+    }
+  }
+
+  function populateDestinationPresetSelect(){
+    var sel = document.getElementById("destinationPresetSelect");
+    if(!sel) return;
+    var current = sel.value;
+    sel.innerHTML = '<option value="">－ 保存済みの訪問先から選択 －</option>';
+    destinationPresets.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); }).forEach(function(p){
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    if(destinationPresets.some(function(p){ return p.id===current; })) sel.value = current;
+  }
+
+  function renderTrainPresetList(){
+    var el = document.getElementById("trainPresetList");
+    el.innerHTML = "";
+    if(trainPresets.length===0){
+      var e = document.createElement("div");
+      e.className = "empty-state";
+      e.textContent = "まだ登録がありません。新規申請で「電車代」を選ぶと登録できます。";
+      el.appendChild(e);
+      return;
+    }
+    trainPresets.slice().sort(function(a,b){ return (a.from+a.to).localeCompare(b.from+b.to,"ja"); }).forEach(function(p){
+      var row = document.createElement("div");
+      row.className = "preset-row";
+      row.innerHTML = '<div class="info"><b></b><div class="sub"></div></div><button type="button" class="preset-del">削除</button>';
+      row.querySelector("b").textContent = p.from + " → " + p.to;
+      row.querySelector(".sub").textContent = formatYen(p.fare) + "（片道）";
+      row.querySelector(".preset-del").addEventListener("click", function(){
+        showConfirm('「' + p.from + ' → ' + p.to + '」を削除しますか？', function(){
+          trainPresets = trainPresets.filter(function(x){ return x.id !== p.id; });
+          saveTrainPresets();
+          renderTrainPresetList();
+          populateTrainPresetSelect();
+        }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+      });
+      el.appendChild(row);
+    });
+  }
+  function renderCarPresetList(){
+    var el = document.getElementById("carPresetList");
+    el.innerHTML = "";
+    if(carPresets.length===0){
+      var e = document.createElement("div");
+      e.className = "empty-state";
+      e.textContent = "まだ登録がありません。新規申請で「ガソリン代」を選ぶと登録できます。";
+      el.appendChild(e);
+      return;
+    }
+    carPresets.slice().sort(function(a,b){ return (a.origin+a.destination).localeCompare(b.origin+b.destination,"ja"); }).forEach(function(p){
+      var row = document.createElement("div");
+      row.className = "preset-row";
+      row.innerHTML = '<div class="info"><b></b><div class="sub"></div></div><button type="button" class="preset-del">削除</button>';
+      row.querySelector("b").textContent = p.origin + " → " + p.destination;
+      row.querySelector(".sub").textContent = p.distanceKm + "km ・ " + formatYen(calcCarYen(p.distanceKm));
+      row.querySelector(".preset-del").addEventListener("click", function(){
+        showConfirm('「' + p.origin + ' → ' + p.destination + '」を削除しますか？', function(){
+          carPresets = carPresets.filter(function(x){ return x.id !== p.id; });
+          saveCarPresets();
+          renderCarPresetList();
+          populateCarPresetSelect();
+        }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+      });
+      el.appendChild(row);
+    });
+  }
+
+  function renderDestinationPresetList(){
+    var el = document.getElementById("destinationPresetList");
+    if(!el) return;
+    el.innerHTML = "";
+    if(destinationPresets.length===0){
+      var e = document.createElement("div");
+      e.className = "empty-state";
+      e.textContent = "まだ登録がありません。新規申請画面の「訪問先」欄から追加できます。";
+      el.appendChild(e);
+      return;
+    }
+    destinationPresets.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); }).forEach(function(p){
+      var row = document.createElement("div");
+      row.className = "preset-row";
+      row.innerHTML = '<div class="info"><b></b></div><button type="button" class="preset-del">削除</button>';
+      row.querySelector("b").textContent = p.name;
+      row.querySelector(".preset-del").addEventListener("click", function(){
+        showConfirm('「' + p.name + '」を削除しますか？', function(){
+          destinationPresets = destinationPresets.filter(function(x){ return x.id !== p.id; });
+          saveDestinationPresets();
+          renderDestinationPresetList();
+          populateDestinationPresetSelect();
+        }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+      });
+      el.appendChild(row);
+    });
+  }
+
+  /* =========================================================
+     利用者の名前（この端末を使っている人）の判定
+     最初に自分の名前を選んでもらい、以後はホーム画面に
+     自分の申請だけを表示します。
+     支払い担当者は複数人いて、しかも自分自身の申請をすることも
+     あるため、「支払い担当者」を別の役割にはせず、名前を選んだ
+     あとで合言葉（PIN）を使って"支払い担当者の権限"を追加で
+     有効にできる仕組みにしています。権限を有効にした人は、
+     ホーム画面で「自分の申請」と「全員の申請」を切り替えられます。
+     ステータスを承認済みに変えたときは、誰が承認したかも記録します。
+     ========================================================= */
+  var IDENTITY_KEY = "appIdentityName_v1";
+  // 支払い担当者権限を有効にするための合言葉。ここを直接書き換えて、社内で使う合言葉に変更してください。
+  // ※これは「間違って他の人の一覧を開かないようにする」ための簡単な仕切りであり、
+  //   本格的なパスワード保護ではありません（ソースコードを見れば合言葉が分かってしまいます）。
+  var PAYER_PIN = "3645";
+  var PAYER_UNLOCK_KEY = "payerUnlockedNames_v1";
+  var VIEW_MODE_KEY = "appViewMode_v1";
+  var STORE_FILTER_KEY = "appStoreFilter_v1";
+
+  function loadIdentityName(){
+    try{ return localStorage.getItem(IDENTITY_KEY) || ""; }catch(e){ return ""; }
+  }
+  function saveIdentityName(name){
+    try{ localStorage.setItem(IDENTITY_KEY, name); }catch(e){ showToast("設定の保存に失敗しました。"); }
+  }
+  function clearIdentityName(){
+    try{ localStorage.removeItem(IDENTITY_KEY); }catch(e){ /* 無視 */ }
+  }
+
+  function loadPayerUnlockedNames(){
+    try{ var r = localStorage.getItem(PAYER_UNLOCK_KEY); return r ? JSON.parse(r) : []; }
+    catch(e){ return []; }
+  }
+  function savePayerUnlockedNames(){
+    try{ localStorage.setItem(PAYER_UNLOCK_KEY, JSON.stringify(payerUnlockedNames)); }
+    catch(e){ showToast("設定の保存に失敗しました。"); }
+  }
+  var payerUnlockedNames = loadPayerUnlockedNames();
+  // この名前（この端末で）が、すでに支払い担当者権限を有効にしているかどうか
+  function isPayerName(name){
+    return !!name && payerUnlockedNames.indexOf(name) !== -1;
+  }
+  function unlockPayerForName(name){
+    if(!isPayerName(name)){
+      payerUnlockedNames.push(name);
+      savePayerUnlockedNames();
+    }
+  }
+
+  function loadViewMode(){
+    try{ return localStorage.getItem(VIEW_MODE_KEY) || "self"; }catch(e){ return "self"; }
+  }
+  function saveViewMode(mode){
+    try{ localStorage.setItem(VIEW_MODE_KEY, mode); }catch(e){ /* 無視 */ }
+  }
+
+  // 「全員の申請」を見るときに、店舗（座間店／洋光台店）で絞り込むための設定。
+  // "all" ＝すべての店舗（絞り込みなし）
+  function loadStoreFilter(){
+    try{ return localStorage.getItem(STORE_FILTER_KEY) || "all"; }catch(e){ return "all"; }
+  }
+  function saveStoreFilter(store){
+    try{ localStorage.setItem(STORE_FILTER_KEY, store); }catch(e){ /* 無視 */ }
+  }
+
+  // 新規申請フォームで最後に選んだ店舗（座間店／洋光台店）を覚えておき、
+  // 次に申請フォームを開いたときに、最初からその店舗が選ばれた状態にする。
+  var LAST_FORM_STORE_KEY = "lastFormStore_v1";
+  function loadLastFormStore(){
+    try{ return localStorage.getItem(LAST_FORM_STORE_KEY) || ""; }catch(e){ return ""; }
+  }
+  function saveLastFormStore(store){
+    try{ localStorage.setItem(LAST_FORM_STORE_KEY, store); }catch(e){ /* 無視 */ }
+  }
+
+  var currentIdentityName = loadIdentityName();
+  var currentViewMode = loadViewMode(); // "self"＝自分の申請だけ／"all"＝全員の申請（支払い担当者権限があるときだけ有効）
+  var currentStoreFilter = loadStoreFilter(); // "all"＝店舗の絞り込みなし／それ以外＝店舗名で絞り込み（「全員の申請」のときだけ使う）
+  // 申請者一覧から削除された名前が残っていた場合はリセットする
+  if(currentIdentityName && !applicantPresets.some(function(p){ return p.name === currentIdentityName; })){
+    currentIdentityName = "";
+    clearIdentityName();
+  }
+
+  // 今の名前・表示モードで見てよい申請だけを返す
+  // （支払い担当者権限があり「全員の申請」モードのときだけ全員分。それ以外は自分の分だけ。
+  //   「全員の申請」のときは、さらに店舗で絞り込める）
+  function visibleClaims(){
+    if(!currentIdentityName) return [];
+    if(isPayerName(currentIdentityName) && currentViewMode === "all"){
+      var all = claims.slice();
+      if(currentStoreFilter !== "all"){
+        all = all.filter(function(c){ return c.store === currentStoreFilter; });
+      }
+      return all;
+    }
+    return claims.filter(function(c){ return c.applicantName === currentIdentityName; });
+  }
+
+  /* ---- 名前選択画面：最初に自分の名前を選ぶ／追加する ---- */
+  function renderRoleApplicantList(){
+    var el = document.getElementById("roleApplicantList");
+    if(!el) return;
+    el.innerHTML = "";
+    if(applicantPresets.length === 0){
+      var hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "下の欄から名前を追加してください。";
+      el.appendChild(hint);
+      return;
+    }
+    applicantPresets.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); }).forEach(function(p){
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.textContent = p.name;
+      btn.addEventListener("click", function(){ setIdentityName(p.name); });
+      el.appendChild(btn);
+    });
+  }
+
+  function setIdentityName(name){
+    currentIdentityName = name;
+    saveIdentityName(name);
+    saveLastApplicantName(name);
+    currentViewMode = "self";
+    saveViewMode("self");
+    resetForm();
+    refreshHome();
+    showView("home");
+    showToast(name + "さんとして開始しました。");
+  }
+
+  function enterIdentitySelection(){
+    currentIdentityName = "";
+    clearIdentityName();
+    renderRoleApplicantList();
+    showView("role");
+  }
+
+  document.getElementById("roleAddApplicantBtn").addEventListener("click", function(){
+    var input = document.getElementById("roleNewApplicantName");
+    var name = input.value.trim();
+    if(!name){ showToast("名前を入力してください。"); return; }
+    if(!isFullName(name)){ showToast("姓と名の間にスペースを入れて、フルネームで入力してください（例：山田 太郎）。"); return; }
+    var p = addApplicantPreset(name);
+    input.value = "";
+    renderApplicantChips(); // 新規申請フォーム側の一覧も更新しておく
+    setIdentityName(p.name);
+  });
+
+  /* ---- 支払い担当者権限の合言葉入力（設定画面から使う） ---- */
+  document.getElementById("pinBackBtn").addEventListener("click", function(){
+    showView("settings");
+  });
+  document.getElementById("pinSubmitBtn").addEventListener("click", function(){
+    var val = document.getElementById("pinInput").value.trim();
+    if(val && val === PAYER_PIN){
+      unlockPayerForName(currentIdentityName);
+      currentViewMode = "all";
+      saveViewMode("all");
+      refreshHome();
+      showView("settings");
+      showToast("支払い担当者の権限を有効にしました。");
+    }else{
+      document.getElementById("pinError").classList.add("show");
+    }
+  });
+
+  function openPayerUnlock(){
+    document.getElementById("pinInput").value = "";
+    document.getElementById("pinError").classList.remove("show");
+    showView("pin");
+  }
+
+  function setViewMode(mode){
+    currentViewMode = mode;
+    saveViewMode(mode);
+    refreshHome();
+  }
+
+  function setStoreFilter(store){
+    currentStoreFilter = store;
+    saveStoreFilter(store);
+    refreshHome();
+  }
+
+  function renderRoleBar(){
+    var el = document.getElementById("roleBar");
+    if(!el) return;
+    el.innerHTML = "";
+    if(!currentIdentityName) return;
+
+    var row1 = document.createElement("div");
+    row1.style.display = "flex";
+    row1.style.justifyContent = "space-between";
+    row1.style.alignItems = "center";
+    row1.style.gap = "8px";
+    var span = document.createElement("span");
+    span.textContent = currentIdentityName + "さんとして利用中";
+    row1.appendChild(span);
+    el.appendChild(row1);
+
+    if(isPayerName(currentIdentityName)){
+      // 支払い担当者権限あり：「自分の申請」／「全員の申請」を切り替えられる
+      var row2 = document.createElement("div");
+      row2.className = "chip-group";
+      row2.style.marginTop = "8px";
+      [["self","自分の申請"],["all","全員の申請（支払い担当者）"]].forEach(function(pair){
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip";
+        b.textContent = pair[1];
+        b.setAttribute("aria-pressed", currentViewMode === pair[0] ? "true" : "false");
+        b.addEventListener("click", function(){ setViewMode(pair[0]); });
+        row2.appendChild(b);
+      });
+      el.appendChild(row2);
+
+      // 「全員の申請」を見ているときだけ、店舗（座間店／洋光台店）で絞り込める
+      if(currentViewMode === "all"){
+        var row3 = document.createElement("div");
+        row3.className = "chip-group";
+        row3.style.marginTop = "8px";
+        [["all","すべての店舗"],["座間店","座間店"],["洋光台店","洋光台店"]].forEach(function(pair){
+          var b2 = document.createElement("button");
+          b2.type = "button";
+          b2.className = "chip";
+          b2.textContent = pair[1];
+          b2.setAttribute("aria-pressed", currentStoreFilter === pair[0] ? "true" : "false");
+          b2.addEventListener("click", function(){ setStoreFilter(pair[0]); });
+          row3.appendChild(b2);
+        });
+        el.appendChild(row3);
+      }
+    }
+
+    // 「全員の申請」を見ているときは、他の人の分と紛れないよう「＋ 新しく申請する」は隠す
+    var newClaimBtnEl = document.getElementById("newClaimBtn");
+    if(newClaimBtnEl) newClaimBtnEl.hidden = (isPayerName(currentIdentityName) && currentViewMode === "all");
+  }
+
+  /* ---- 設定画面：名前を変える／支払い担当者権限の有効化／各種管理画面への入口 ---- */
+  function renderSettingsView(){
+    var idEl = document.getElementById("settingsIdentityText");
+    if(idEl){
+      idEl.innerHTML = "";
+      var span = document.createElement("span");
+      span.textContent = currentIdentityName ? (currentIdentityName + "さんとして利用中") : "";
+      idEl.appendChild(span);
+    }
+
+    var block = document.getElementById("settingsPayerUnlockBlock");
+    if(block){
+      block.innerHTML = "";
+      if(isPayerName(currentIdentityName)){
+        var status = document.createElement("div");
+        status.className = "hint";
+        status.textContent = "支払い担当者権限：有効です";
+        block.appendChild(status);
+      }else{
+        var unlockBtn = document.createElement("button");
+        unlockBtn.type = "button";
+        unlockBtn.id = "payerUnlockBtn";
+        unlockBtn.className = "btn-secondary btn-block";
+        unlockBtn.textContent = "🔒 支払い担当者権限を有効にする";
+        unlockBtn.addEventListener("click", function(){ openPayerUnlock(); });
+        block.appendChild(unlockBtn);
+      }
+    }
+
+    // 通知先メールの設定・支払い担当者リストの管理は、支払い担当者権限がある人にだけ見せる
+    var notifySettingsBtn = document.getElementById("openNotifySettingsBtn");
+    if(notifySettingsBtn) notifySettingsBtn.hidden = !isPayerName(currentIdentityName);
+  }
+
+  document.getElementById("switchNameBtn").addEventListener("click", enterIdentitySelection);
+  document.getElementById("openSettingsBtn").addEventListener("click", function(){
+    renderSettingsView();
+    showView("settings");
+  });
+  document.getElementById("settingsBackBtn").addEventListener("click", function(){
+    showView("home");
+  });
+
+  /* =========================================================
+     画面切り替え（3つの<section>を hidden 属性で出し分けるだけの
+     シンプルな仕組みです。専用のルーティングライブラリは使いません）
+     ========================================================= */
+  var views = document.querySelectorAll(".view");
+  function showView(name){
+    views.forEach(function(v){ v.hidden = (v.dataset.view !== name); });
+    window.scrollTo(0,0);
+    // 各画面は内側の.contentがスクロールする作りなので、前回そこがどこまで
+    // スクロールされていたかが残ってしまう。切り替えるたびに、表示した
+    // 画面の先頭（一番上）が見えるようにスクロール位置をリセットする。
+    var shown = document.querySelector('.view[data-view="' + name + '"]');
+    if(shown){
+      var contentEl = shown.querySelector(".content");
+      if(contentEl) contentEl.scrollTop = 0;
+    }
+  }
+
+  /* =========================================================
+     ホーム画面の描画
+     ========================================================= */
+  var statsRow = document.getElementById("statsRow");
+  var historyList = document.getElementById("historyList");
+  var STATUS_LIST = ["申請中","承認済み","受領済み"];
+
+  function formatDate(d){
+    if(!d) return "";
+    // サーバー側でシートが日付型として保存し、ISO文字列（例："2026-09-19T00:00:00.000Z"）で
+    // 返ってきた場合でも、日付の部分だけを取り出して表示する
+    d = String(d).split("T")[0];
+    var parts = d.split("-");
+    return parts.length===3 ? (parts[0]+"/"+parts[1]+"/"+parts[2]) : d;
+  }
+  function formatYen(n){
+    return "¥" + Number(n||0).toLocaleString("ja-JP");
+  }
+  function catShort(cat){
+    // カードに表示する丸バッジ用の1文字ラベル
+    return { "高速代":"高", "駐車代":"駐", "電車代":"電", "ガソリン代":"車", "その他":"他" }[cat] || "他";
+  }
+
+  function renderStats(){
+    statsRow.innerHTML = "";
+    var list = visibleClaims();
+    STATUS_LIST.forEach(function(st){
+      var count = list.filter(function(c){ return c.status===st; }).length;
+      var chip = document.createElement("div");
+      chip.className = "stat-chip";
+      chip.innerHTML = '<span class="num">'+count+'</span><span class="label">'+st+'</span>';
+      statsRow.appendChild(chip);
+    });
+  }
+
+  function buildClaimCard(c){
+    var card = document.createElement("button");
+    card.type = "button";
+    card.className = "claim-card";
+    card.innerHTML =
+      '<div class="cat-badge">'+catShort(c.category)+'</div>'+
+      '<div class="claim-main">'+
+        '<div class="claim-purpose"></div>'+
+        '<div class="claim-sub"></div>'+
+      '</div>'+
+      '<div class="claim-right">'+
+        '<div class="claim-amount"></div>'+
+        '<span class="status-pill" data-status="'+c.status+'">'+c.status+'</span>'+
+      '</div>';
+    card.querySelector(".claim-purpose").textContent = c.destination || "";
+    card.querySelector(".claim-sub").textContent = formatDate(c.date) + "・" + c.category + (c.store ? "・" + c.store : "") + (c.applicantName ? "・" + c.applicantName : "");
+    card.querySelector(".claim-amount").textContent = formatYen(c.amount);
+    card.addEventListener("click", function(){ openDetail(c.id); });
+    return card;
+  }
+
+  function renderHistory(){
+    historyList.innerHTML = "";
+    var list = visibleClaims();
+    if(list.length===0){
+      var empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "まだ申請がありません。「＋ 新しく申請する」から登録してください。";
+      historyList.appendChild(empty);
+      return;
+    }
+    // 新しく登録したものが上に来るように並び替え
+    var sorted = list.slice().sort(function(a,b){ return b.createdAt.localeCompare(a.createdAt); });
+
+    // 「全員の申請」を見ているときだけ、利用日を年→月の単位でまとめて表示する
+    var groupByDate = isPayerName(currentIdentityName) && currentViewMode === "all";
+    if(!groupByDate){
+      sorted.forEach(function(c){ historyList.appendChild(buildClaimCard(c)); });
+      return;
+    }
+
+    // 利用日（c.date）の年・月ごとにグループ分けする。
+    // sorted はcreatedAt（登録した順）で並んでいるだけなので、グループの並び順は
+    // 利用日そのものをもとに新しい年・月が上に来るよう、あらためて計算する
+    var yearMap = {};
+    sorted.forEach(function(c){
+      var d = c.date || "";
+      var y = d.length>=4 ? d.slice(0,4) : "日付未設定";
+      var m = d.length>=7 ? Number(d.slice(5,7)) : 0;
+      if(!yearMap[y]) yearMap[y] = {};
+      if(!yearMap[y][m]) yearMap[y][m] = [];
+      yearMap[y][m].push(c);
+    });
+    var yearOrder = Object.keys(yearMap).sort(function(a,b){
+      if(a === "日付未設定") return 1;
+      if(b === "日付未設定") return -1;
+      return b.localeCompare(a); // 新しい年が上に来るように
+    });
+    yearOrder.forEach(function(y){
+      var yearGroup = document.createElement("div");
+      yearGroup.className = "year-group";
+      var yTitle = document.createElement("h2");
+      yTitle.className = "section-title year-title";
+      yTitle.textContent = (y === "日付未設定") ? y : (y + "年");
+      yearGroup.appendChild(yTitle);
+
+      var monthOrder = Object.keys(yearMap[y]).map(Number).sort(function(a,b){ return b - a; }); // 新しい月が上に来るように
+      monthOrder.forEach(function(m){
+        var monthGroup = document.createElement("div");
+        monthGroup.className = "month-group";
+        var mTitle = document.createElement("h3");
+        mTitle.className = "section-title month-title";
+        mTitle.textContent = m ? (m + "月") : "月未設定";
+        monthGroup.appendChild(mTitle);
+
+        var monthList = document.createElement("div");
+        monthList.className = "history-list";
+        yearMap[y][m].forEach(function(c){ monthList.appendChild(buildClaimCard(c)); });
+        monthGroup.appendChild(monthList);
+
+        yearGroup.appendChild(monthGroup);
+      });
+
+      historyList.appendChild(yearGroup);
+    });
+  }
+
+  /* ---- 日ごとの支払い合計（出納帳用）
+     「受領済み」になった申請だけを対象に、受領した日ごと・店舗（座間店／洋光台店）ごとに
+     金額を合計して表示する。出納帳に転記するときにすぐ使えるようにするための機能。
+     支払い担当者が「全員の申請」を見ているときだけ表示する。
+     上の「すべての店舗／座間店／洋光台店」の絞り込みチップと連動し、
+     選んだ店舗の分だけを表示する。また、金額の行をタップすると、
+     その日・その店舗で「誰にいくら支払ったか」の内訳が開く。 ---- */
+  function renderDailyTotals(){
+    var el = document.getElementById("dailyTotalsBlock");
+    if(!el) return;
+    el.innerHTML = "";
+
+    var showBlock = isPayerName(currentIdentityName) && currentViewMode === "all";
+    if(!showBlock) return;
+
+    var wrap = document.createElement("div");
+    wrap.className = "daily-totals-card";
+    var title = document.createElement("div");
+    title.className = "section-title";
+    title.style.marginTop = "0";
+    title.textContent = "日ごとの支払い合計（出納帳用）" + (currentStoreFilter === "all" ? "" : "・" + currentStoreFilter);
+    wrap.appendChild(title);
+
+    // 上の店舗絞り込みチップ（すべての店舗／座間店／洋光台店）と同じ条件で絞り込む
+    var received = claims.filter(function(c){ return c.status === "受領済み"; });
+    if(currentStoreFilter !== "all"){
+      received = received.filter(function(c){ return c.store === currentStoreFilter; });
+    }
+    if(received.length === 0){
+      var hint0 = document.createElement("span");
+      hint0.className = "hint";
+      hint0.textContent = "まだ受領済みの申請がありません。";
+      wrap.appendChild(hint0);
+      el.appendChild(wrap);
+      return;
+    }
+
+    var hint = document.createElement("span");
+    hint.className = "hint";
+    hint.textContent = "「受領済み」にした日ごとに、店舗別の合計金額をまとめています。金額をタップすると、誰にいくら支払ったかの内訳が見られます。";
+    wrap.appendChild(hint);
+
+    // 受領した日（receivedDate）ごと・店舗ごとに、金額の合計と申請1件ごとの内訳（誰が・いくら・
+    // どの種別で・誰が支払ったか）を集計する。古いデータで受領日が記録されていない場合は、
+    // 利用日で代用する。
+    var dayMap = {};
+    received.forEach(function(c){
+      var d = c.receivedDate || c.date || "日付未設定";
+      var store = c.store || "店舗未設定";
+      var amt = Number(c.amount) || 0;
+      var person = c.applicantName || "申請者不明";
+      if(!dayMap[d]) dayMap[d] = {};
+      if(!dayMap[d][store]) dayMap[d][store] = { total: 0, items: [] };
+      dayMap[d][store].total += amt;
+      dayMap[d][store].items.push({
+        person: person,
+        category: c.category || "",
+        amount: amt,
+        payerName: c.selectedPayerName || ""
+      });
+    });
+    var dayOrder = Object.keys(dayMap).sort(function(a,b){
+      if(a === "日付未設定") return 1;
+      if(b === "日付未設定") return -1;
+      return b.localeCompare(a); // 新しい日付が上に来るように
+    });
+
+    dayOrder.forEach(function(d){
+      var dayBlock = document.createElement("div");
+      dayBlock.className = "daily-total-day";
+      var dateTitle = document.createElement("div");
+      dateTitle.className = "daily-total-date";
+      dateTitle.textContent = (d === "日付未設定") ? d : formatDate(d);
+      dayBlock.appendChild(dateTitle);
+
+      // 座間店・洋光台店の順で表示し、それ以外（古いデータで店舗未設定など）があれば続けて表示する
+      var storeOrder = Object.keys(dayMap[d]).sort(function(a,b){
+        var order = { "座間店":0, "洋光台店":1 };
+        var av = order.hasOwnProperty(a) ? order[a] : 2;
+        var bv = order.hasOwnProperty(b) ? order[b] : 2;
+        if(av !== bv) return av - bv;
+        return a.localeCompare(b,"ja");
+      });
+      storeOrder.forEach(function(storeName){
+        var info = dayMap[d][storeName];
+        if(!info) return; // その日にその店舗の受領済みが無ければ表示しない
+
+        var itemWrap = document.createElement("div");
+        itemWrap.className = "daily-total-item";
+
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "daily-total-row";
+        row.setAttribute("aria-expanded","false");
+        row.innerHTML = '<span class="store-name"></span><span class="daily-total-right"><strong></strong><span class="daily-total-arrow" aria-hidden="true">▸</span></span>';
+        row.querySelector(".store-name").textContent = storeName;
+        row.querySelector("strong").textContent = formatYen(info.total);
+
+        var breakdown = document.createElement("div");
+        breakdown.className = "daily-total-breakdown";
+        breakdown.hidden = true;
+        info.items.slice().sort(function(a,b){ return b.amount - a.amount; }).forEach(function(item){
+          var br = document.createElement("div");
+          br.className = "breakdown-row";
+          br.innerHTML = '<span class="breakdown-name"></span><span class="breakdown-amount"></span><span class="breakdown-payer"></span>';
+          br.querySelector(".breakdown-name").textContent = item.person + (item.category ? ("・" + item.category) : "");
+          br.querySelector(".breakdown-amount").textContent = formatYen(item.amount);
+          br.querySelector(".breakdown-payer").textContent = "支払い担当者：" + (item.payerName || "—");
+          breakdown.appendChild(br);
+        });
+
+        row.addEventListener("click", function(){
+          var isOpen = row.getAttribute("aria-expanded") === "true";
+          row.setAttribute("aria-expanded", isOpen ? "false" : "true");
+          breakdown.hidden = isOpen;
+        });
+
+        itemWrap.appendChild(row);
+        itemWrap.appendChild(breakdown);
+        dayBlock.appendChild(itemWrap);
+      });
+
+      wrap.appendChild(dayBlock);
+    });
+
+    el.appendChild(wrap);
+  }
+
+  function refreshHome(){ renderRoleBar(); renderSettingsView(); renderStats(); renderDailyTotals(); renderHistory(); }
+
+  /* =========================================================
+     新規申請フォーム
+     ========================================================= */
+  var claimForm = document.getElementById("claimForm");
+  var fDate = document.getElementById("fDate");
+  var fAmount = document.getElementById("fAmount");
+  var fDestination = document.getElementById("fDestination");
+  var destinationPresetSelect = document.getElementById("destinationPresetSelect");
+  var fMemo = document.getElementById("fMemo");
+  var fReceipt = document.getElementById("fReceipt");
+  var receiptPreview = document.getElementById("receiptPreview");
+  var categoryGroup = document.getElementById("categoryGroup");
+  var selectedCategory = null;
+  var storeGroup = document.getElementById("storeGroup");
+  var selectedStore = null;
+  var purposeGroup = document.getElementById("purposeGroup");
+  var selectedPurposeType = null;
+  var pendingReceiptDataUrl = null;
+  var payerGroupEl = document.getElementById("payerGroup");
+  var selectedPayerForClaim = null;
+
+  // 選んだ店舗（座間店／洋光台店）に応じて、支払い担当者リスト（payerRoster）から
+  // その店舗を担当する人だけを候補として出し分ける
+  function renderPayerGroup(){
+    payerGroupEl.innerHTML = "";
+    selectedPayerForClaim = null;
+    if(!selectedStore) return; // 店舗が決まるまでは何も表示しない
+    var list = payerRoster.filter(function(p){ return Array.isArray(p.stores) && p.stores.indexOf(selectedStore) !== -1; });
+    if(list.length === 0){
+      var hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "この店舗の支払い担当者が登録されていません。「設定」→「通知先のメール設定」から追加してください。";
+      payerGroupEl.appendChild(hint);
+      return;
+    }
+    list.forEach(function(p){
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.dataset.value = p.name;
+      btn.textContent = p.name;
+      btn.addEventListener("click", function(){
+        selectedPayerForClaim = p.name;
+        payerGroupEl.querySelectorAll(".chip").forEach(function(b){
+          b.setAttribute("aria-pressed", b===btn ? "true" : "false");
+        });
+        document.getElementById("errPayer").classList.remove("show");
+      });
+      payerGroupEl.appendChild(btn);
+    });
+  }
+
+  storeGroup.querySelectorAll(".chip").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      selectedStore = btn.dataset.value;
+      saveLastFormStore(selectedStore);
+      storeGroup.querySelectorAll(".chip").forEach(function(b){
+        b.setAttribute("aria-pressed", b===btn ? "true" : "false");
+      });
+      document.getElementById("errStore").classList.remove("show");
+      renderPayerGroup();
+    });
+  });
+
+  purposeGroup.querySelectorAll(".chip").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      selectedPurposeType = btn.dataset.value;
+      purposeGroup.querySelectorAll(".chip").forEach(function(b){
+        b.setAttribute("aria-pressed", b===btn ? "true" : "false");
+      });
+      document.getElementById("errPurposeType").classList.remove("show");
+    });
+  });
+
+  /* ---- 申請者：チップ選択＋この端末で最後に選んだ人を自動選択 ---- */
+  var applicantGroup = document.getElementById("applicantGroup");
+  var selectedApplicantName = null;
+
+  function selectApplicant(name){
+    selectedApplicantName = name;
+    applicantGroup.querySelectorAll(".chip").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.value === name ? "true" : "false");
+    });
+    document.getElementById("errApplicant").classList.remove("show");
+  }
+
+  // 自分の名前が決まっている場合は、申請者欄をチップ選択ではなく固定表示にする
+  // （支払い担当者も自分自身の名前で申請することがあるため、常に自分の名前で固定する）
+  function applyRoleToForm(){
+    var isFixed = !!currentIdentityName;
+    applicantGroup.hidden = isFixed;
+    document.getElementById("applicantAddForm").hidden = isFixed;
+    var fixedEl = document.getElementById("applicantFixedName");
+    if(isFixed){
+      fixedEl.hidden = false;
+      fixedEl.textContent = "申請者：" + currentIdentityName + "（ご自身の名前で申請されます）";
+    }else{
+      fixedEl.hidden = true;
+    }
+  }
+
+  function renderApplicantChips(){
+    applicantGroup.innerHTML = "";
+    if(applicantPresets.length === 0){
+      var hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "下の欄から名前を追加すると、ここから選べるようになります。";
+      applicantGroup.appendChild(hint);
+      return;
+    }
+    applicantPresets.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"ja"); }).forEach(function(p){
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.dataset.value = p.name;
+      btn.textContent = p.name;
+      btn.addEventListener("click", function(){
+        selectApplicant(p.name);
+        saveLastApplicantName(p.name); // この端末を使っている人として記憶しておく
+      });
+      applicantGroup.appendChild(btn);
+    });
+  }
+
+  document.getElementById("qAddApplicantBtn").addEventListener("click", function(){
+    var nameInput = document.getElementById("qNewApplicantName");
+    var name = nameInput.value.trim();
+    if(!name){ showToast("名前を入力してください。"); return; }
+    if(!isFullName(name)){ showToast("姓と名の間にスペースを入れて、フルネームで入力してください（例：山田 太郎）。"); return; }
+    var p = addApplicantPreset(name);
+    renderApplicantChips();
+    selectApplicant(p.name);
+    saveLastApplicantName(p.name);
+    nameInput.value = "";
+    showToast("「" + p.name + "」を追加しました。");
+  });
+
+  document.getElementById("deleteSelectedApplicantBtn").addEventListener("click", function(){
+    if(!selectedApplicantName){
+      showToast("削除したい申請者をタップして選択してから押してください。");
+      return;
+    }
+    var nameToDelete = selectedApplicantName;
+    showConfirm('「' + nameToDelete + '」を申請者一覧から削除しますか？', function(){
+      applicantPresets = applicantPresets.filter(function(p){ return p.name !== nameToDelete; });
+      saveApplicantPresets();
+      if(loadLastApplicantName() === nameToDelete) saveLastApplicantName("");
+      selectedApplicantName = null;
+      renderApplicantChips();
+      renderApplicantPresetList(); // 「⚙ 申請者・区間の管理」画面を開いていた場合のために一覧も更新
+      showToast("「" + nameToDelete + "」を削除しました。");
+    }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+  });
+
+  /* ---- 訪問先：よく使う訪問先から選ぶ・保存する・削除する ---- */
+  destinationPresetSelect.addEventListener("change", function(){
+    var p = destinationPresets.find(function(x){ return x.id === destinationPresetSelect.value; });
+    if(!p) return;
+    fDestination.value = p.name;
+  });
+  document.getElementById("saveDestinationPresetBtn").addEventListener("click", function(){
+    var name = fDestination.value.trim();
+    if(!name){ showToast("訪問先を入力してから保存してください。"); return; }
+    var p = upsertDestinationPreset(name);
+    populateDestinationPresetSelect();
+    destinationPresetSelect.value = p.id;
+    showToast("訪問先を保存しました：" + name);
+  });
+  document.getElementById("deleteDestinationPresetBtn").addEventListener("click", function(){
+    var id = destinationPresetSelect.value;
+    if(!id){ showToast("削除する訪問先をまず選択してください。"); return; }
+    var p = destinationPresets.find(function(x){ return x.id === id; });
+    if(!p) return;
+    showConfirm('「' + p.name + '」をプリセットから削除しますか？', function(){
+      destinationPresets = destinationPresets.filter(function(x){ return x.id !== id; });
+      saveDestinationPresets();
+      populateDestinationPresetSelect();
+      renderDestinationPresetList(); // 「⚙ 申請者・区間の管理」画面を開いていた場合のために一覧も更新
+      showToast("「" + p.name + "」を削除しました。");
+    }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+  });
+
+  var trainRouteBlock = document.getElementById("trainRouteBlock");
+  var carRouteBlock = document.getElementById("carRouteBlock");
+  var destinationBlock = document.getElementById("destinationBlock");
+  var trainPresetSelect = document.getElementById("trainPresetSelect");
+  var trainPresetSelect2 = document.getElementById("trainPresetSelect2");
+  var carComputedAmount = document.getElementById("carComputedAmount");
+  var receiptBlock = document.getElementById("receiptBlock");
+  var CAR_LEG_COUNT = 4;
+
+  // 経費種別によって「金額の決め方」や「必要な入力欄」が変わるので、選択に応じて出し分ける
+  function updateCategoryUI(){
+    var isTrain = selectedCategory === "電車代";
+    var isCar = selectedCategory === "ガソリン代";
+    trainRouteBlock.hidden = !isTrain;
+    carRouteBlock.hidden = !isCar;
+    destinationBlock.hidden = isCar; // ガソリン代は区間ごとの「到着地」欄を使うため、共通の「訪問先」欄は隠す
+
+    // 電車代・ガソリン代はレシートが発生しない（切符やガソリン代の領収書を求めない）ため、
+    // レシート画像の欄ごと非表示にする
+    var needsReceipt = !(isTrain || isCar);
+    receiptBlock.hidden = !needsReceipt;
+    if(!needsReceipt){
+      pendingReceiptDataUrl = null;
+      fReceipt.value = "";
+      receiptPreview.hidden = true;
+      receiptPreview.removeAttribute("src");
+    }
+
+    if(isCar){ recalcCarAmount(); }
+    updateFinalRouteSummary();
+  }
+
+  categoryGroup.querySelectorAll(".chip").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      selectedCategory = btn.dataset.value;
+      categoryGroup.querySelectorAll(".chip").forEach(function(b){
+        b.setAttribute("aria-pressed", b===btn ? "true" : "false");
+      });
+      document.getElementById("errCategory").classList.remove("show");
+      updateCategoryUI();
+    });
+  });
+
+  /* =========================================================
+     普段は隠しておいて、タップすると開く入力欄（訪問先プリセット／
+     電車代・ガソリン代の出発地・到着地などの手入力欄）の共通処理。
+     ========================================================= */
+  var COLLAPSIBLE_BODY_IDS = [
+    "destinationPresetBody",
+    "trainManual1Body", "trainManual2Body",
+    "carManual1Body", "carManual2Body", "carManual3Body", "carManual4Body"
+  ];
+  function initCollapsible(toggleId, bodyId){
+    var btn = document.getElementById(toggleId);
+    var body = document.getElementById(bodyId);
+    if(!btn || !body) return;
+    btn.addEventListener("click", function(){
+      var expanded = btn.getAttribute("aria-expanded") === "true";
+      btn.setAttribute("aria-expanded", expanded ? "false" : "true");
+      body.hidden = expanded;
+    });
+  }
+  function expandCollapsible(bodyId){
+    var body = document.getElementById(bodyId);
+    if(!body) return;
+    body.hidden = false;
+    var btn = document.querySelector('[aria-controls="' + bodyId + '"]');
+    if(btn) btn.setAttribute("aria-expanded", "true");
+  }
+  function collapseCollapsible(bodyId){
+    var body = document.getElementById(bodyId);
+    if(!body) return;
+    body.hidden = true;
+    var btn = document.querySelector('[aria-controls="' + bodyId + '"]');
+    if(btn) btn.setAttribute("aria-expanded", "false");
+  }
+  function collapseAllToggles(){
+    COLLAPSIBLE_BODY_IDS.forEach(collapseCollapsible);
+  }
+  initCollapsible("destinationPresetToggle", "destinationPresetBody");
+  initCollapsible("trainManual1Toggle", "trainManual1Body");
+  initCollapsible("trainManual2Toggle", "trainManual2Body");
+  initCollapsible("carManual1Toggle", "carManual1Body");
+  initCollapsible("carManual2Toggle", "carManual2Body");
+  initCollapsible("carManual3Toggle", "carManual3Body");
+  initCollapsible("carManual4Toggle", "carManual4Body");
+
+  function resetForm(){
+    claimForm.reset();
+    selectedCategory = null;
+    // 店舗は、前回この端末で選んだものを引き継いで、最初から選択された状態にする
+    // （座間店を選んだ人は次回も座間店から、洋光台店を選んだ人は洋光台店から始まる）
+    var savedStore = loadLastFormStore();
+    selectedStore = (savedStore === "座間店" || savedStore === "洋光台店") ? savedStore : null;
+    selectedPurposeType = null;
+    pendingReceiptDataUrl = null;
+    categoryGroup.querySelectorAll(".chip").forEach(function(b){ b.setAttribute("aria-pressed","false"); });
+    storeGroup.querySelectorAll(".chip").forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.value === selectedStore ? "true" : "false"); });
+    purposeGroup.querySelectorAll(".chip").forEach(function(b){ b.setAttribute("aria-pressed","false"); });
+    renderPayerGroup(); // 引き継いだ店舗に応じて、支払い担当者の候補も最初から表示する
+    receiptPreview.hidden = true;
+    receiptPreview.removeAttribute("src");
+    fDate.value = new Date().toISOString().slice(0,10); // 今日の日付を初期値に
+
+    // 申請者：自分の名前（この端末で選んだ名前）を常に固定で使う。
+    // 支払い担当者自身が申請者になることもあるため、誰であっても自分の名前で申請する。
+    selectedApplicantName = null;
+    renderApplicantChips();
+    if(currentIdentityName){
+      selectApplicant(currentIdentityName);
+    }
+    applyRoleToForm();
+    document.getElementById("qNewApplicantName").value = "";
+    destinationPresetSelect.value = "";
+
+    document.querySelectorAll(".field-error").forEach(function(el){ el.classList.remove("show"); });
+
+    // 訪問先プリセット・電車代/ガソリン代の手入力欄は、毎回いったん閉じた状態にしておく
+    collapseAllToggles();
+
+    // 電車代・ガソリン代の入力補助もあわせてリセット
+    trainSlot1Ctrl.reset();
+    trainSlot2Ctrl.reset();
+    recalcTrainAmount();
+    for(var _cn=1; _cn<=CAR_LEG_COUNT; _cn++){ carLegCtrls[_cn].reset(); }
+    [2,3,4].forEach(function(n){
+      carLegBlocks[n].hidden = true;
+      document.getElementById("addCarLegBtn" + n).hidden = false;
+    });
+    recalcCarAmount();
+    updateCategoryUI();
+  }
+
+  /* ---- 電車代：区間1・区間2の運賃を合算 ----
+     区間1・区間2はそれぞれ独立した「プリセットから選ぶ／今回だけ入力する／
+     保存する」の3点セットを持っていて、お互いに干渉しません。 */
+  var trainSlot1 = { fare: 0, route: null };
+  var trainSlot2 = { fare: 0, route: null };
+  var trainRouteNoteCombined = null;
+
+  function recalcTrainAmount(){
+    var total = trainSlot1.fare + trainSlot2.fare;
+    if(total > 0){ fAmount.value = total; }
+    var notes = [];
+    if(trainSlot1.route) notes.push(trainSlot1.route);
+    if(trainSlot2.route) notes.push(trainSlot2.route);
+    trainRouteNoteCombined = notes.length ? notes.join("／") : null;
+    updateFinalRouteSummary();
+  }
+
+  // 経費種別（電車代／ガソリン代）に応じて、金額欄のすぐ上に最終的な区間をまとめて表示する
+  function updateFinalRouteSummary(){
+    var block = document.getElementById("finalRouteSummaryBlock");
+    var text = document.getElementById("finalRouteSummaryText");
+    var note = null;
+    if(selectedCategory === "電車代") note = trainRouteNoteCombined;
+    else if(selectedCategory === "ガソリン代") note = carRouteNoteCombined;
+    if(note){
+      text.textContent = note;
+      block.hidden = false;
+    }else{
+      block.hidden = true;
+    }
+  }
+
+  function updateTrainSlotSummary(slotNum, slotState){
+    var el = document.getElementById("trainRoute" + slotNum + "Summary");
+    if(!el) return;
+    el.textContent = slotState.route ? (slotState.route + "（" + formatYen(slotState.fare) + "）") : "未設定";
+  }
+
+  // 区間1・区間2、それぞれの「プリセット選択欄＋今回だけ使う／保存する」一式を
+  // まとめて設定するための共通処理（同じ仕組みを2回使い回しています）
+  function setupTrainSlot(opts){
+    function applyFromPreset(){
+      var p = trainPresets.find(function(x){ return x.id === opts.selectEl.value; });
+      if(p){
+        opts.slotState.fare = Number(p.fare) || 0;
+        opts.slotState.route = p.from + " → " + p.to;
+      }else{
+        opts.slotState.fare = 0;
+        opts.slotState.route = null;
+      }
+      updateTrainSlotSummary(opts.num, opts.slotState);
+      recalcTrainAmount();
+    }
+    opts.selectEl.addEventListener("change", applyFromPreset);
+
+    opts.useOnceBtn.addEventListener("click", function(){
+      var from = opts.fromEl.value.trim();
+      var to = opts.toEl.value.trim();
+      var fare = Number(opts.fareEl.value);
+      if(!fare || fare<=0){
+        showToast("運賃を入力してください。");
+        return;
+      }
+      opts.selectEl.value = ""; // プリセットの選択は解除
+      opts.slotState.fare = fare;
+      opts.slotState.route = (from && to) ? (from + " → " + to) : null;
+      updateTrainSlotSummary(opts.num, opts.slotState);
+      recalcTrainAmount();
+      showToast("区間" + opts.num + "：今回の運賃として入力しました（保存はしていません）。");
+    });
+
+    opts.addBtn.addEventListener("click", function(){
+      var from = opts.fromEl.value.trim();
+      var to = opts.toEl.value.trim();
+      var fare = Number(opts.fareEl.value);
+      if(!from || !to || !fare || fare<=0){
+        showToast("出発駅・到着駅・運賃をすべて入力してください。");
+        return;
+      }
+      var p = upsertTrainPreset(from, to, fare);
+      populateTrainPresetSelect();
+      opts.selectEl.value = p.id;
+      opts.slotState.fare = p.fare;
+      opts.slotState.route = from + " → " + to;
+      updateTrainSlotSummary(opts.num, opts.slotState);
+      recalcTrainAmount();
+      showToast("区間を保存しました：" + from + " → " + to);
+      opts.fromEl.value = "";
+      opts.toEl.value = "";
+      opts.fareEl.value = "";
+    });
+
+    // 往復することが多いため、出発駅・到着駅をワンタップで入れ替えられるようにする
+    if(opts.swapBtn){
+      opts.swapBtn.addEventListener("click", function(){
+        var from = opts.fromEl.value.trim();
+        var to = opts.toEl.value.trim();
+        if(!from && !to && opts.slotState.route){
+          // 手入力欄が空でも、プリセット選択などですでに区間が決まっていれば、その内容を使う
+          var parts = opts.slotState.route.split(" → ");
+          from = parts[0] || "";
+          to = parts[1] || "";
+        }
+        if(!from && !to){
+          showToast("入れ替える出発駅・到着駅がありません。");
+          return;
+        }
+        opts.selectEl.value = ""; // プリセットの選択は解除し、手入力欄の内容を使う
+        opts.fromEl.value = to;
+        opts.toEl.value = from;
+        if(!opts.fareEl.value && opts.slotState.fare){
+          opts.fareEl.value = opts.slotState.fare; // 往復で運賃が同じ場合のために引き継いでおく
+        }
+        showToast("出発駅と到着駅を入れ替えました。「今回だけ使う」または「保存する」を押して確定してください。");
+      });
+    }
+
+    return {
+      reset: function(){
+        opts.selectEl.value = "";
+        opts.fromEl.value = "";
+        opts.toEl.value = "";
+        opts.fareEl.value = "";
+        opts.slotState.fare = 0;
+        opts.slotState.route = null;
+        updateTrainSlotSummary(opts.num, opts.slotState);
+      }
+    };
+  }
+
+  var trainSlot1Ctrl = setupTrainSlot({
+    num: 1,
+    slotState: trainSlot1,
+    selectEl: trainPresetSelect,
+    fromEl: document.getElementById("qNewTrainFrom"),
+    toEl: document.getElementById("qNewTrainTo"),
+    fareEl: document.getElementById("qNewTrainFare"),
+    useOnceBtn: document.getElementById("qUseOnceBtn"),
+    addBtn: document.getElementById("qAddTrainBtn"),
+    swapBtn: document.getElementById("swapTrainBtn1")
+  });
+  var trainSlot2Ctrl = setupTrainSlot({
+    num: 2,
+    slotState: trainSlot2,
+    selectEl: trainPresetSelect2,
+    fromEl: document.getElementById("qNewTrainFrom2"),
+    toEl: document.getElementById("qNewTrainTo2"),
+    fareEl: document.getElementById("qNewTrainFare2"),
+    useOnceBtn: document.getElementById("qUseOnceBtn2"),
+    addBtn: document.getElementById("qAddTrainBtn2"),
+    swapBtn: document.getElementById("swapTrainBtn2")
+  });
+
+  function deleteSelectedTrainPreset(selectEl, slotCtrl){
+    var id = selectEl.value;
+    if(!id){ showToast("削除する区間をまず選択してください。"); return; }
+    var p = trainPresets.find(function(x){ return x.id === id; });
+    if(!p) return;
+    showConfirm('「' + p.from + ' → ' + p.to + '」をプリセットから削除しますか？', function(){
+      trainPresets = trainPresets.filter(function(x){ return x.id !== id; });
+      saveTrainPresets();
+      populateTrainPresetSelect();
+      slotCtrl.reset();
+      recalcTrainAmount();
+      renderTrainPresetList(); // 「⚙ 申請者・区間の管理」画面を開いていた場合のために一覧も更新
+      showToast("「" + p.from + " → " + p.to + "」を削除しました。");
+    }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+  }
+  document.getElementById("deleteTrainPreset1Btn").addEventListener("click", function(){
+    deleteSelectedTrainPreset(trainPresetSelect, trainSlot1Ctrl);
+  });
+  document.getElementById("deleteTrainPreset2Btn").addEventListener("click", function(){
+    deleteSelectedTrainPreset(trainPresetSelect2, trainSlot2Ctrl);
+  });
+
+  /* ---- ガソリン代：区間1〜4、それぞれ独立した「出発地・到着地・距離・プリセット」一式 ----
+     電車代のsetupTrainSlot(opts)と同じ考え方で、区間ごとに完全に独立させています。
+     区間1は常に表示、区間2〜4はボタンを押すまで隠れています。 */
+  var carRouteNoteCombined = null;
+
+  function setupCarLeg(n){
+    var selectEl = document.getElementById("carPresetSelect" + n);
+    var originInput = document.getElementById("carOrigin" + n);
+    var destinationInput = document.getElementById("carDestination" + n);
+    var distanceInput = document.getElementById("carDistanceKm" + n);
+    var mapsBtn = document.getElementById("carMapsBtn" + n);
+    var saveBtn = document.getElementById("saveCarPreset" + n + "Btn");
+    var deleteBtn = document.getElementById("deleteCarPreset" + n + "Btn");
+    var summaryEl = document.getElementById("carLeg" + n + "Summary");
+
+    function getOriginText(){
+      return originInput.value.trim();
+    }
+    function updateSummary(){
+      var o = getOriginText();
+      var d = destinationInput.value.trim();
+      var km = Number(distanceInput.value) || 0;
+      if(o && d && km > 0){
+        summaryEl.textContent = o + " → " + d + "（" + km + "km・" + formatYen(calcCarYen(km)) + "）";
+      }else if(o || d || km){
+        summaryEl.textContent = "（出発地・到着地・距離をすべて入力してください）";
+      }else{
+        summaryEl.textContent = "未設定";
+      }
+    }
+
+    originInput.addEventListener("input", function(){ updateSummary(); recalcCarAmount(); });
+    destinationInput.addEventListener("input", function(){ updateSummary(); recalcCarAmount(); });
+    distanceInput.addEventListener("input", function(){ updateSummary(); recalcCarAmount(); });
+
+    selectEl.addEventListener("change", function(){
+      var p = carPresets.find(function(x){ return x.id === selectEl.value; });
+      if(!p) return;
+      originInput.value = p.origin;
+      destinationInput.value = p.destination;
+      distanceInput.value = p.distanceKm;
+      updateSummary();
+      recalcCarAmount();
+    });
+
+    /* 「マップで調べる」はボタンではなく本物のリンク（<a target="_blank">）にしています。
+       JavaScriptのwindow.open()は環境によってポップアップとして
+       ブロックされることがありますが、タップした瞬間にリンク先(href)を
+       組み立ててから遷移させる方式なら、ブラウザに通常のリンクとして
+       扱われるため、iPhoneのSafariでも確実に新しいタブでGoogleマップが開きます。 */
+    mapsBtn.addEventListener("click", function(ev){
+      var origin = getOriginText();
+      var destination = destinationInput.value.trim();
+      if(!origin || !destination){
+        ev.preventDefault();
+        showToast("出発地と到着地を入力してからお試しください。");
+        return;
+      }
+      this.href = "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(origin) +
+        "&destination=" + encodeURIComponent(destination) + "&travelmode=driving";
+    });
+
+    saveBtn.addEventListener("click", function(){
+      var origin = getOriginText();
+      var destination = destinationInput.value.trim();
+      var km = Number(distanceInput.value);
+      if(!origin || !destination || !(km > 0)){
+        showToast("出発地・到着地・走行距離(km)を入力してから保存してください。");
+        return;
+      }
+      var p = upsertCarPreset(origin, destination, km);
+      populateCarPresetSelect();
+      selectEl.value = p.id;
+      showToast("区間を保存しました：" + origin + " → " + destination);
+      var original = saveBtn.textContent;
+      saveBtn.textContent = "保存しました ✓";
+      setTimeout(function(){ saveBtn.textContent = original; }, 1500);
+    });
+
+    deleteBtn.addEventListener("click", function(){
+      var id = selectEl.value;
+      if(!id){ showToast("削除する区間をまず選択してください。"); return; }
+      var p = carPresets.find(function(x){ return x.id === id; });
+      if(!p) return;
+      showConfirm('「' + p.origin + ' → ' + p.destination + '」をプリセットから削除しますか？', function(){
+        carPresets = carPresets.filter(function(x){ return x.id !== id; });
+        saveCarPresets();
+        populateCarPresetSelect();
+        recalcCarAmount();
+        renderCarPresetList(); // 「⚙ 申請者・区間の管理」画面を開いていた場合のために一覧も更新
+        showToast("「" + p.origin + " → " + p.destination + "」を削除しました。");
+      }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+    });
+
+    // 往復することが多いため、出発地・到着地をワンタップで入れ替えられるようにする
+    var swapBtn = document.getElementById("swapCarBtn" + n);
+    if(swapBtn){
+      swapBtn.addEventListener("click", function(){
+        var o = originInput.value;
+        var d = destinationInput.value;
+        if(!o.trim() && !d.trim()){
+          showToast("入れ替える出発地・到着地がありません。");
+          return;
+        }
+        originInput.value = d;
+        destinationInput.value = o;
+        updateSummary();
+        recalcCarAmount();
+        showToast("出発地と到着地を入れ替えました。");
+      });
+    }
+
+    return {
+      num: n,
+      getOriginText: getOriginText,
+      getDestination: function(){ return destinationInput.value.trim(); },
+      getKm: function(){ return Number(distanceInput.value) || 0; },
+      updateSummary: updateSummary,
+      reset: function(){
+        selectEl.value = "";
+        originInput.value = "";
+        destinationInput.value = "";
+        distanceInput.value = "";
+        updateSummary();
+      }
+    };
+  }
+
+  var carLegBlocks = {
+    2: document.getElementById("carLegBlock2"),
+    3: document.getElementById("carLegBlock3"),
+    4: document.getElementById("carLegBlock4")
+  };
+  var carLegCtrls = {
+    1: setupCarLeg(1),
+    2: setupCarLeg(2),
+    3: setupCarLeg(3),
+    4: setupCarLeg(4)
+  };
+
+  function isCarLegActive(n){
+    return n === 1 || (carLegBlocks[n] && !carLegBlocks[n].hidden);
+  }
+
+  function recalcCarAmount(){
+    var total = 0;
+    var notes = [];
+    for(var n=1; n<=CAR_LEG_COUNT; n++){
+      var ctrl = carLegCtrls[n];
+      ctrl.updateSummary();
+      if(!isCarLegActive(n)) continue;
+      var o = ctrl.getOriginText();
+      var d = ctrl.getDestination();
+      var km = ctrl.getKm();
+      if(o && d && km > 0){
+        total += calcCarYen(km);
+        notes.push(o + " → " + d + "（" + km + "km）");
+      }
+    }
+    carComputedAmount.textContent = "合計：" + formatYen(total);
+    if(selectedCategory === "ガソリン代"){ fAmount.value = total > 0 ? total : ""; }
+    carRouteNoteCombined = notes.length ? notes.join("／") : null;
+    updateFinalRouteSummary();
+  }
+
+  // ガソリン代の record.destination には、有効な区間のうち一番大きい番号の到着地を使う
+  function getFinalCarDestination(){
+    for(var n=CAR_LEG_COUNT; n>=1; n--){
+      if(isCarLegActive(n)){
+        var d = carLegCtrls[n].getDestination();
+        if(d) return d;
+      }
+    }
+    return "";
+  }
+
+  [2,3,4].forEach(function(n){
+    var addBtn = document.getElementById("addCarLegBtn" + n);
+    var removeBtn = document.getElementById("removeCarLegBtn" + n);
+    var block = carLegBlocks[n];
+    addBtn.addEventListener("click", function(){
+      block.hidden = false;
+      addBtn.hidden = true;
+      recalcCarAmount();
+    });
+    removeBtn.addEventListener("click", function(){
+      carLegCtrls[n].reset();
+      block.hidden = true;
+      addBtn.hidden = false;
+      recalcCarAmount();
+    });
+  });
+
+  /* 画像をそのまま保存すると容量を圧迫するため、
+     Canvas（画像を描き直せる仕組み）を使って
+     「横幅1000px・画質70%」程度まで自動で軽くしてから保存します */
+  function resizeImage(file, maxDim, quality){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+          var w = img.width, h = img.height;
+          if(w > h){ if(w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; } }
+          else { if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; } }
+          var canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  fReceipt.addEventListener("change", function(){
+    var file = fReceipt.files && fReceipt.files[0];
+    if(!file) return;
+    resizeImage(file, 1000, 0.7).then(function(dataUrl){
+      pendingReceiptDataUrl = dataUrl;
+      receiptPreview.src = dataUrl;
+      receiptPreview.hidden = false;
+    }).catch(function(){
+      showToast("画像の読み込みに失敗しました。もう一度お試しください。");
+    });
+  });
+
+  claimForm.addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var ok = true;
+    document.querySelectorAll(".field-error").forEach(function(el){ el.classList.remove("show"); });
+
+    if(!selectedApplicantName){ document.getElementById("errApplicant").classList.add("show"); ok = false; }
+    if(!selectedStore){ document.getElementById("errStore").classList.add("show"); ok = false; }
+    if(!selectedCategory){ document.getElementById("errCategory").classList.add("show"); ok = false; }
+    var amountVal = Number(fAmount.value);
+    if(!fAmount.value || isNaN(amountVal) || amountVal <= 0){ document.getElementById("errAmount").classList.add("show"); ok = false; }
+    if(selectedCategory === "ガソリン代"){
+      if(!getFinalCarDestination()){
+        document.getElementById("errCarDestination1").classList.add("show");
+        ok = false;
+        // 到着地が隠れた入力欄の中にある場合は、気づけるように開いておく
+        for(var _errN=1; _errN<=CAR_LEG_COUNT; _errN++){
+          if(isCarLegActive(_errN)) expandCollapsible("carManual" + _errN + "Body");
+        }
+      }
+    }else{
+      if(!fDestination.value.trim()){ document.getElementById("errDestination").classList.add("show"); ok = false; }
+    }
+    if(!selectedPurposeType){ document.getElementById("errPurposeType").classList.add("show"); ok = false; }
+    if(!selectedPayerForClaim){ document.getElementById("errPayer").classList.add("show"); ok = false; }
+    if(!fDate.value) ok = false;
+    if(!ok){
+      // 赤字の入力エラーだけだと気づきにくいため、トーストで知らせ、
+      // 先頭（申請者欄）まで自動でスクロールする
+      showToast("入力に不足があります。赤字の項目をご確認ください。");
+      window.scrollTo(0,0);
+      return;
+    }
+
+    // 電車代・ガソリン代の場合は、選んだ区間の内訳を記録しておく（詳細画面で確認できるように）
+    var routeNote = null;
+    if(selectedCategory === "電車代"){
+      routeNote = trainRouteNoteCombined;
+    }else if(selectedCategory === "ガソリン代"){
+      routeNote = carRouteNoteCombined;
+    }
+
+    var record = {
+      id: uid(),
+      applicantName: selectedApplicantName,
+      store: selectedStore,
+      date: fDate.value,
+      category: selectedCategory,
+      amount: amountVal,
+      destination: (selectedCategory === "ガソリン代") ? getFinalCarDestination() : fDestination.value.trim(),
+      purposeType: selectedPurposeType,
+      memo: fMemo.value.trim(),
+      routeNote: routeNote,
+      receiptImage: pendingReceiptDataUrl,
+      status: "申請中",
+      createdAt: new Date().toISOString(),
+      selectedPayerName: selectedPayerForClaim
+    };
+
+    // Enterキーで意図せずすぐ登録されてしまわないよう、
+    // 保存の直前に内容確認のダイアログを必ず挟む
+    var summaryLines = [
+      "申請者：" + record.applicantName,
+      "店舗：" + record.store,
+      "利用日：" + formatDate(record.date),
+      "経費種別：" + record.category,
+      "訪問先：" + record.destination,
+      "利用目的：" + record.purposeType,
+      "金額：" + formatYen(record.amount),
+      "支払い担当者：" + record.selectedPayerName
+    ];
+    if(record.routeNote) summaryLines.push("区間：" + record.routeNote);
+    if(record.memo) summaryLines.push("メモ：" + record.memo);
+    if(record.receiptImage) summaryLines.push("レシート画像：添付あり");
+
+    showConfirm(
+      "以下の内容で登録します。よろしいですか？\n\n" + summaryLines.join("\n"),
+      function(){
+        claims.push(record);
+        saveClaims();
+        refreshHome();
+        saveLastApplicantName(record.applicantName);
+        showToast("申請を登録しました。");
+        showView("home");
+        sendAutoNotification(record, "new_claim"); // 支払い担当者への自動通知を試みる（失敗時はトーストのみ）
+        syncClaimUpsert(record); // 共有スプレッドシートにも保存を試みる（失敗しても手元のデータは残ります）
+      },
+      { okLabel:"はい・登録する", cancelLabel:"いいえ・修正する" }
+    );
+  });
+
+  document.getElementById("newClaimBtn").addEventListener("click", function(){
+    resetForm();
+    showView("form");
+  });
+  document.getElementById("formBackBtn").addEventListener("click", function(){
+    showView("home");
+  });
+
+  /* =========================================================
+     申請詳細画面
+     ========================================================= */
+  var detailContent = document.getElementById("detailContent");
+  var currentDetailId = null;
+
+  function openDetail(id){
+    var target = claims.find(function(x){ return x.id === id; });
+    var canViewAll = isPayerName(currentIdentityName) && currentViewMode === "all";
+    if(!canViewAll && target && target.applicantName !== currentIdentityName){
+      showToast("この申請は閲覧できません。");
+      return;
+    }
+    currentDetailId = id;
+    renderDetail();
+    showView("detail");
+  }
+
+  function renderDetail(){
+    var c = claims.find(function(x){ return x.id === currentDetailId; });
+    if(!c){ showView("home"); return; }
+
+    var html = '<div class="detail-block">';
+    html += '<div class="detail-row"><span class="k">ステータス</span><span class="v"><span class="status-pill" data-status="'+c.status+'">'+c.status+'</span></span></div>';
+    html += '<div class="detail-row"><span class="k">申請者</span><span class="v">'+escapeHtml(c.applicantName)+'</span></div>';
+    if(c.store){
+      html += '<div class="detail-row"><span class="k">店舗</span><span class="v">'+escapeHtml(c.store)+'</span></div>';
+    }
+    if(c.selectedPayerName){
+      html += '<div class="detail-row"><span class="k">支払い担当者</span><span class="v">'+escapeHtml(c.selectedPayerName)+'</span></div>';
+    }
+    if(c.approvedByName){
+      html += '<div class="detail-row"><span class="k">承認者</span><span class="v">'+escapeHtml(c.approvedByName)+'</span></div>';
+    }
+    html += '<div class="detail-row"><span class="k">利用日</span><span class="v">'+formatDate(c.date)+'</span></div>';
+    html += '<div class="detail-row"><span class="k">経費種別</span><span class="v">'+c.category+'</span></div>';
+    if(c.routeNote){
+      html += '<div class="detail-row"><span class="k">区間</span><span class="v">'+escapeHtml(c.routeNote)+'</span></div>';
+    }
+    html += '<div class="detail-row"><span class="k">金額</span><span class="v">'+formatYen(c.amount)+'</span></div>';
+    html += '<div class="detail-row"><span class="k">訪問先</span><span class="v">'+escapeHtml(c.destination)+'</span></div>';
+    html += '<div class="detail-row"><span class="k">利用目的</span><span class="v">'+escapeHtml(c.purposeType)+'</span></div>';
+    if(c.memo){
+      html += '<div class="detail-row" style="flex-direction:column;align-items:flex-start;"><span class="k">メモ</span><div class="detail-memo">'+escapeHtml(c.memo)+'</div></div>';
+    }
+    html += '</div>';
+
+    if(c.receiptImage){
+      html += '<img class="detail-receipt" src="'+c.receiptImage+'" alt="レシート画像">';
+    }
+
+    // 「申請中／承認済み」の切り替えは支払い担当者だけができる（誰の申請でも）。
+    // 「受領済み」は、その申請をした本人だけが操作できる（支払い担当者であっても、他人の申請では押せない）。
+    var canManageApproval = isPayerName(currentIdentityName);
+    var isOwnClaim = (c.applicantName === currentIdentityName);
+    // 受領済み（お金を受け取り済み）になったら、それ以上ステータスを変更したり
+    // 削除したりできないようにする（受け渡しが終わった記録を誤って動かさないため）
+    var isLocked = (c.status === "受領済み");
+    html += '<div class="detail-block">';
+    if(isLocked){
+      html += '<div class="section-title" style="margin-top:0;">ステータス</div>';
+      if(canManageApproval){
+        html += '<span class="hint">受領済みのため、ステータスの変更はできませんが、支払い担当者はこの申請を削除できます。</span>';
+      }else{
+        html += '<span class="hint">受領済みになっているため、ステータスの変更や削除はできません。</span>';
+      }
+    }else{
+      html += '<div class="section-title" style="margin-top:0;">' + (canManageApproval ? "ステータス変更" : "受け取りの確認") + '</div>';
+      html += '<div class="status-switch" id="statusSwitch">';
+      STATUS_LIST.forEach(function(st){
+        if(st === "受領済み"){
+          // 受領済みは、申請した本人だけが操作できる（承認済みになってから）
+          if(!isOwnClaim) return;
+          if(!(c.status === "承認済み" || c.status === "受領済み")) return;
+        }else{
+          // 申請中・承認済みは支払い担当者だけが操作できる
+          if(!canManageApproval) return;
+        }
+        html += '<button type="button" class="btn-secondary" data-status="'+st+'" aria-pressed="'+(c.status===st)+'">'+st+'</button>';
+      });
+      html += '</div>';
+      if(isOwnClaim && !canManageApproval && c.status === "申請中"){
+        html += '<span class="hint">支払い担当者が承認すると、ここに「受領済み」ボタンが表示されます。</span>';
+      }
+    }
+    html += '</div>';
+
+    if(!isLocked || canManageApproval){
+      html += '<button type="button" class="btn-danger-text" id="deleteClaimBtn">この申請を削除する</button>';
+    }
+
+    detailContent.innerHTML = html;
+
+    detailContent.querySelectorAll("#statusSwitch button").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var newStatus = btn.dataset.status;
+        var becameApproved = (newStatus === "承認済み" && c.status !== "承認済み");
+        var becameReceived = (newStatus === "受領済み" && c.status !== "受領済み");
+        c.status = newStatus;
+        if(becameApproved){
+          c.approvedByName = currentIdentityName; // 誰が承認したかを記録しておく
+        }
+        if(becameReceived){
+          c.receivedDate = new Date().toISOString().slice(0,10); // 出納帳の日ごと集計のため、受領した日を記録しておく
+        }
+        saveClaims();
+        refreshHome();
+        syncClaimUpsert(c); // 共有スプレッドシートにも反映を試みる（失敗しても手元のデータは残ります）
+        if(becameApproved){
+          sendAutoNotification(c, "approved"); // 支払い担当者が承認したことを、申請者へ自動で通知する
+        }
+        if(becameReceived){
+          sendAutoNotification(c, "received"); // 申請者が受領済みにしたことを、支払い担当者へ自動で通知する
+        }
+        // 承認済み・受領済みにしたときは、そのままトップ画面に戻る
+        if(newStatus === "承認済み" || newStatus === "受領済み"){
+          showView("home");
+        }else{
+          renderDetail();
+        }
+      });
+    });
+    var deleteClaimBtnEl = document.getElementById("deleteClaimBtn");
+    if(deleteClaimBtnEl){
+      deleteClaimBtnEl.addEventListener("click", function(){
+        showConfirm("この申請を削除します。よろしいですか？", function(){
+          claims = claims.filter(function(x){ return x.id !== c.id; });
+          saveClaims();
+          refreshHome();
+          showToast("削除しました。");
+          showView("home");
+          if(c._createdOnServer){ syncDeleteClaim(c.id); } // サーバー側にも保存されていた場合は、そちらからも削除を試みる
+        }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
+      });
+    }
+  }
+
+  document.getElementById("detailBackBtn").addEventListener("click", function(){
+    showView("home");
+  });
+
+  /* =========================================================
+     区間・距離の管理画面
+     ========================================================= */
+  document.getElementById("openPresetsBtn").addEventListener("click", function(){
+    renderApplicantPresetList();
+    renderDestinationPresetList();
+    renderTrainPresetList();
+    renderCarPresetList();
+    showView("presets");
+  });
+  document.getElementById("presetsBackBtn").addEventListener("click", function(){
+    showView("home");
+  });
+
+  function escapeHtml(s){
+    var div = document.createElement("div");
+    div.textContent = s == null ? "" : s;
+    return div.innerHTML;
+  }
+
+  /* =========================================================
+     数値入力欄（金額・距離など）で、マウスホイールを回したときに
+     数字が変わってしまわないようにする。
+     （入力欄にカーソルを合わせたままスクロールすると数字が動いてしまう
+     ブラウザの標準動作を止めるため、ホイール操作があったら
+     いったんフォーカスを外している）
+     ========================================================= */
+  document.addEventListener("wheel", function(e){
+    var t = document.activeElement;
+    if(t && t.tagName === "INPUT" && t.type === "number"){
+      t.blur();
+    }
+  }, { passive: true });
+
+  var syncNowBtnEl = document.getElementById("syncNowBtn");
+  if(syncNowBtnEl){
+    syncNowBtnEl.addEventListener("click", function(){
+      if(syncNowBtnEl.disabled) return;
+      var originalText = syncNowBtnEl.textContent;
+      syncNowBtnEl.disabled = true;
+      syncNowBtnEl.textContent = "…";
+      syncWithServer(true).then(function(){
+        syncNowBtnEl.disabled = false;
+        syncNowBtnEl.textContent = originalText;
+      });
+    });
+  }
+
+  /* =========================================================
+     初期表示
+     ========================================================= */
+  populateTrainPresetSelect();
+  populateCarPresetSelect();
+  populateDestinationPresetSelect();
+  resetForm();
+  refreshHome();
+  if(currentIdentityName){
+    // 名前が登録済みの端末では、次回起動時からは毎回ホーム画面ではなく
+    // 「＋新しく申請する」の入力画面から始まるようにする（申請する頻度が高いため）
+    showView("form");
+  }else{
+    renderRoleApplicantList();
+    showView("role");
+  }
+  syncWithServer(false); // アプリ起動時に、サーバー上の最新データを裏側で取得しておく（失敗しても静かに手元のデータのまま使える）
+  loadPayerRosterFromServer().then(function(){ renderPayerGroup(); }); // 支払い担当者リストも裏側で取得しておく（失敗しても初期値のまま使える）
+
+})();
+</script>
+</body>
+</html>
