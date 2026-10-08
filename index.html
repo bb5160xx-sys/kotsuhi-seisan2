@@ -939,6 +939,12 @@
       existing = { id: uid(), name: name };
       applicantPresets.push(existing);
       saveApplicantPresets();
+      // 他の端末でもすぐにこの名前を選べるように、共有の名簿にも追加しておく
+      // （合言葉不要。起動直後の移行処理など、通知の仕組みがまだ準備できていない
+      // タイミングで呼ばれる場合もあるため、念のためtry/catchで囲んでいる）
+      try{
+        notifySettingsRequest({ type: "add_applicant_name", name: name }).catch(function(){});
+      }catch(e){ /* 無視 */ }
     }
     return existing;
   }
@@ -964,6 +970,7 @@
           applicantPresets = applicantPresets.filter(function(x){ return x.id !== p.id; });
           saveApplicantPresets();
           if(loadLastApplicantName() === p.name) saveLastApplicantName("");
+          notifySettingsRequest({ type: "delete_applicant_name", name: p.name }).catch(function(){}); // 共有の名簿からも削除しておく
           renderApplicantPresetList();
           renderApplicantChips();
         }, { okLabel:"削除する", cancelLabel:"キャンセル", danger:true });
@@ -1151,10 +1158,23 @@
         throw new Error("list_claims failed: " + JSON.stringify(res));
       }
       res.claims.forEach(function(c){ c._serverSynced = true; c._createdOnServer = true; });
-      claims = res.claims;
+      // サーバーへの送信がまだ終わっていない（通信エラーなどで失敗した）申請がある場合、
+      // サーバーの最新データでそのまま上書きすると、その申請が手元からも消えてしまう
+      // （＝「申請したはずのものが出ない」の原因になる）。そのため、まだ送信できていない
+      // 申請だけは残しておき、次回の同期で再送を試みる。
+      var serverIds = {};
+      res.claims.forEach(function(c){ serverIds[c.id] = true; });
+      var stillPending = claims.filter(function(c){ return !c._serverSynced && !serverIds[c.id]; });
+      claims = res.claims.concat(stillPending);
       saveClaims();
       refreshHome();
-      if(showFeedback) showToast("最新のデータに更新しました。");
+      if(showFeedback){
+        if(stillPending.length > 0){
+          showToast("一部の申請（" + stillPending.length + "件）がまだサーバーに保存できていません。通信状況の良い場所で、もう一度🔄をお試しください。");
+        }else{
+          showToast("最新のデータに更新しました。");
+        }
+      }
     }).catch(function(err){
       console.warn("サーバーとの同期に失敗しました", err);
       if(showFeedback) showToast("サーバーに接続できませんでした。ネットワークをご確認のうえ、もう一度お試しください。");
@@ -1213,8 +1233,47 @@
       if(res && res.ok && Array.isArray(res.payerRoster) && res.payerRoster.length > 0){
         payerRoster = res.payerRoster;
       }
+      // サーバー側で（どこかの端末から）支払い担当者権限が有効にされている名前があれば、
+      // この端末にも反映する。これにより、一度どこかの端末で合言葉を入れれば、
+      // 他の端末で同じ名前を選んだときも、合言葉を入れ直さずに権限が有効になる。
+      if(res && res.ok && Array.isArray(res.payerUnlockedNames)){
+        var changed = false;
+        res.payerUnlockedNames.forEach(function(name){
+          if(payerUnlockedNames.indexOf(name) === -1){
+            payerUnlockedNames.push(name);
+            changed = true;
+          }
+        });
+        if(changed) savePayerUnlockedNames();
+      }
     }).catch(function(err){
       console.warn("支払い担当者リストの取得に失敗しました（初期値を使用します）", err);
+    });
+  }
+
+  // アプリを開いたときに、共有の申請者名簿をサーバーから取得し、この端末のリストと
+  // 両方向に合わせておく（合言葉不要・全員が使える）。
+  //   ・サーバーにあってこの端末に無い名前は、この端末にも追加する
+  //   ・この端末にあってサーバーに無い名前（オフライン中に追加した場合など）は、サーバーにも追加する
+  // これにより、どの端末で名前を選んでも同じ一覧・同じ表記になり、「自分が申請したはずのものが
+  // 別の端末だと一覧に出ない」といった、名前の表記違いによる取りこぼしを防ぐ。
+  function loadApplicantRosterFromServer(){
+    return notifySettingsRequest({ type: "get_applicant_roster" }).then(function(res){
+      if(!res || !res.ok || !Array.isArray(res.applicantRoster)) return;
+      var serverNames = res.applicantRoster;
+      serverNames.forEach(function(name){
+        if(!applicantPresets.some(function(p){ return p.name === name; })){
+          applicantPresets.push({ id: uid(), name: name });
+        }
+      });
+      saveApplicantPresets();
+      applicantPresets.forEach(function(p){
+        if(serverNames.indexOf(p.name) === -1){
+          notifySettingsRequest({ type: "add_applicant_name", name: p.name }).catch(function(){});
+        }
+      });
+    }).catch(function(err){
+      console.warn("申請者名簿の取得に失敗しました（この端末のリストのまま使用します）", err);
     });
   }
 
@@ -1750,6 +1809,8 @@
     var val = document.getElementById("pinInput").value.trim();
     if(val && val === PAYER_PIN){
       unlockPayerForName(currentIdentityName);
+      // 他の端末で同じ名前を選んだときも合言葉を入れ直さなくていいように、サーバー側にも記録しておく
+      notifySettingsRequest({ type: "unlock_payer", name: currentIdentityName, key: PAYER_PIN }).catch(function(){});
       currentViewMode = "all";
       saveViewMode("all");
       refreshHome();
@@ -2293,6 +2354,7 @@
       applicantPresets = applicantPresets.filter(function(p){ return p.name !== nameToDelete; });
       saveApplicantPresets();
       if(loadLastApplicantName() === nameToDelete) saveLastApplicantName("");
+      notifySettingsRequest({ type: "delete_applicant_name", name: nameToDelete }).catch(function(){}); // 共有の名簿からも削除しておく
       selectedApplicantName = null;
       renderApplicantChips();
       renderApplicantPresetList(); // 「⚙ 申請者・区間の管理」画面を開いていた場合のために一覧も更新
@@ -3170,7 +3232,12 @@
     showView("role");
   }
   syncWithServer(false); // アプリ起動時に、サーバー上の最新データを裏側で取得しておく（失敗しても静かに手元のデータのまま使える）
-  loadPayerRosterFromServer().then(function(){ renderPayerGroup(); }); // 支払い担当者リストも裏側で取得しておく（失敗しても初期値のまま使える）
+  loadPayerRosterFromServer().then(function(){ renderPayerGroup(); refreshHome(); }); // 支払い担当者リスト・権限も裏側で取得しておく（失敗しても初期値のまま使える）
+  loadApplicantRosterFromServer().then(function(){ // 申請者名簿も他の端末と揃えておく（失敗してもこの端末のリストのまま使える）
+    renderApplicantChips();
+    renderRoleApplicantList();
+    renderApplicantPresetList();
+  });
 
 })();
 </script>
